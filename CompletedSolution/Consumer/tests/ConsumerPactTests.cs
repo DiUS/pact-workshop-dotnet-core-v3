@@ -113,6 +113,7 @@ namespace tests
             await pact.VerifyAsync(async ctx => {
                 var response = await ConsumerApiClient.ValidateDateTimeUsingProviderApi(expectedDateString, ctx.MockServerUri);
                 var body = await response.Content.ReadAsStringAsync();
+                Assert.Equal(HttpStatusCode.OK, response.StatusCode);
                 Assert.Contains(expectedDateParsed, body);
             });
         }

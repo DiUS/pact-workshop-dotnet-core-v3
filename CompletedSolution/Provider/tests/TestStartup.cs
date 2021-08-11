@@ -1,33 +1,32 @@
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using tests.Middleware;
 using Microsoft.AspNetCore.Hosting;
+using Provider;
 
 namespace tests
 {
     public class TestStartup
     {
+        private Startup _proxy;
+
         public TestStartup(IConfiguration configuration)
         {
-            Configuration = configuration;
+            _proxy = new Startup(configuration);
         }
-
-        public IConfiguration Configuration { get; }
 
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
-            services.AddMvc();
+            _proxy.ConfigureServices(services);
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
             app.UseMiddleware<ProviderStateMiddleware>();
-            app.UseRouting();
-            app.UseEndpoints(e => e.MapControllers());
+            _proxy.Configure(app, env);
         }
     }
 }

@@ -34,8 +34,7 @@ namespace tests.Middleware
 
         private void RemoveAllData()
         {
-            string path = Path.Combine(Directory.GetCurrentDirectory(), @"../../../../../data");
-            var deletePath = Path.Combine(path, "somedata.txt");
+            var deletePath = Path.Combine(DataPath(), "somedata.txt");
 
             if (File.Exists(deletePath))
             {
@@ -45,8 +44,12 @@ namespace tests.Middleware
 
         private void AddData()
         {
-            string path = Path.Combine(Directory.GetCurrentDirectory(), @"../../../../../data");
-            var writePath = Path.Combine(path, "somedata.txt");
+            var writePath = Path.Combine(DataPath(), "somedata.txt");
+
+            if (!Directory.Exists(DataPath()))
+            {
+                Directory.CreateDirectory(DataPath());
+            }
 
             if (!File.Exists(writePath))
             {
@@ -54,9 +57,14 @@ namespace tests.Middleware
             }
         }
 
+        private string DataPath()
+        {
+            return Path.Combine(Path.GetTempPath(), "data");
+        }
+
         public async Task Invoke(HttpContext context)
         {
-            if (context.Request.Path.Value == "/provider-states")
+            if (context.Request.Path.Value == "/provider-states/")
             {
                 await this.HandleProviderStatesRequestAsync(context);
                 await context.Response.WriteAsync(String.Empty);
@@ -83,8 +91,7 @@ namespace tests.Middleware
                 var providerState = JsonConvert.DeserializeObject<ProviderState>(jsonRequestBody);
 
                 //A null or empty provider state key must be handled
-                if (providerState != null && !String.IsNullOrEmpty(providerState.State) &&
-                    providerState.Consumer == ConsumerName)
+                if (providerState != null && !String.IsNullOrEmpty(providerState.State))
                 {
                     _providerStates[providerState.State].Invoke();
                 }

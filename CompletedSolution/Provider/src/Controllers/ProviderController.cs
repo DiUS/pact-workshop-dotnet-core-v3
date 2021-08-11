@@ -1,8 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 
@@ -33,7 +30,6 @@ namespace Provider.Controllers
             }
 
             DateTime parsedDateTime;
-
             try
             {
                 parsedDateTime = DateTime.Parse(validDateTime);
@@ -51,7 +47,7 @@ namespace Provider.Controllers
 
         private bool DataMissing()
         {
-            string path = Path.Combine(Directory.GetCurrentDirectory(), @"../../data");
+            string path = Path.Combine(Path.GetTempPath(), "data");
             string pathWithFile = Path.Combine(path, "somedata.txt");
 
             return !System.IO.File.Exists(pathWithFile);
