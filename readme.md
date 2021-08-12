@@ -254,7 +254,7 @@ using the code below mock out our HTTP request to the Provider API which will re
 
 ```csharp
 [Fact]
-public void ItHandlesInvalidDateParam()
+public async void ItHandlesInvalidDateParam()
 {
     // Arange
     var invalidRequestMessage = "validDateTime is not a date or time";
@@ -380,31 +380,14 @@ command line and create another new XUnit project by running the command
 the PactNet package using one of the command line commands below:
 
 ```
-# Windows
-dotnet add package PactNet.Windows --version 2.2.1
-
-# OSX
-dotnet add package PactNet.OSX --version 2.2.1
-
-# Linux
-dotnet add package PactNet.Linux.x64 --version 2.2.1
-# Or...
-dotnet add package PactNet.Linux.x86 --version 2.2.1
-```
-
-Finally your Provider Pact Test project will need to run its own web server during tests
-which will be covered in more detail in the next step but for now, let's get the
-```Microsoft.AspNetCore.All``` package which we will need to run this server. Run the 
-command below to add it to your project:
-
-```
-dotnet add package Microsoft.AspNetCore.All --version 2.0.3
+dotnet add package PactNet --version 4.0.0-beta
+dotnet add package PactNet.Native --version 0.1.0-beta
 ```
 
 With all the packages added to our Provider API test project, we are ready to move onto
-the next step; creating an HTTP Server to manage test environment state.
+the next step; hooking into the application so we can manage test environment state.
 
-### Step 4.1 - Creating a Provider State HTTP Server
+### Step 4.1 - Managing Provider State
 
 The Pact tests for the Provider API will need to do two things:
 
@@ -413,46 +396,46 @@ The Pact tests for the Provider API will need to do two things:
 defined in the Pact file match the mocked ones.
 
 For the first point, we need to create an HTTP API used exclusively by our tests to manage
-the transitions in the state. The first step is to create a simple web api that is started
-when your test run starts.
+the transitions in the state. The first step is to inject a simple api endpoint into your
+application.
 
-#### Step 4.1.1 - Creating a Basic Web API to Manage Provider State
+#### Step 4.1.1 - Injecting API endpoint to Manage Provider State
 
 First, navigate to your new Provider Tests project
 (```[RepositoryRoot]/YourSolution/Provider/tests/```) and create a file and corresponding
-class called ```TestStartup.cs```. In which we will create a basic Web API using the code
-below:
+class called ```TestStartup.cs```. In which we will proxy the application Startup to inject
+middleware:
 
 ``` csharp
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using tests.Middleware;
 using Microsoft.AspNetCore.Hosting;
+using Provider;
 
 namespace tests
 {
     public class TestStartup
     {
+        private Startup _proxy;
+
         public TestStartup(IConfiguration configuration)
         {
-            Configuration = configuration;
+            _proxy = new Startup(configuration);
         }
-
-        public IConfiguration Configuration { get; }
 
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
-            services.AddMvc();
+            _proxy.ConfigureServices(services);
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
-        public void Configure(IApplicationBuilder app, IHostingEnvironment env)
+        public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
             app.UseMiddleware<ProviderStateMiddleware>();
-            app.UseMvc();
+            _proxy.Configure(app, env);
         }
     }
 }
@@ -472,7 +455,7 @@ Above we took the first step to create this API for our tests to access but curr
 it both doesn't compile and even if we removed the ```app.UseMiddleware``` line it 
 wouldn't do anything. We need to create a way for the API to manage the states required
 by our tests. We will do this by creating a piece of middleware (similar to a controller)
-that handles requests to the path ```/provider-states```.
+that handles requests to the path ```/provider-states/```.
 
 ##### Step 4.1.2.1 - Creating the ProviderState Class
 
@@ -491,7 +474,7 @@ namespace tests.Middleware
 }
 ```
 
-This is a simple class which represents the data sent to the ```/provider-states``` path.
+This is a simple class which represents the data sent to the ```/provider-states/``` path.
 The first property will store the name of *Consumer* who is requesting the state change.
 Which in our case is **Consumer**. The second property stores the state we want the
 Provider API to be in.
@@ -528,7 +511,7 @@ namespace tests.Middleware
 
         public async Task Invoke(HttpContext context)
         {
-            if (context.Request.Path.Value == "/provider-states")
+            if (context.Request.Path.Value == "/provider-states/")
             {
                 this.HandleProviderStatesRequest(context);
                 await context.Response.WriteAsync(String.Empty);
@@ -539,7 +522,7 @@ namespace tests.Middleware
             }
         }
 
-        private void HandleProviderStatesRequest(HttpContext context)
+        private async Task HandleProviderStatesRequestAsync(HttpContext context)
         {
             context.Response.StatusCode = (int)HttpStatusCode.OK;
 
@@ -549,14 +532,13 @@ namespace tests.Middleware
                 string jsonRequestBody = String.Empty;
                 using (var reader = new StreamReader(context.Request.Body, Encoding.UTF8))
                 {
-                    jsonRequestBody = reader.ReadToEnd();
+                    jsonRequestBody = await reader.ReadToEndAsync();
                 }
 
                 var providerState = JsonConvert.DeserializeObject<ProviderState>(jsonRequestBody);
 
                 //A null or empty provider state key must be handled
-                if (providerState != null && !String.IsNullOrEmpty(providerState.State) &&
-                    providerState.Consumer == ConsumerName)
+                if (providerState != null && !String.IsNullOrEmpty(providerState.State))
                 {
                     _providerStates[providerState.State].Invoke();
                 }
@@ -566,69 +548,77 @@ namespace tests.Middleware
 }
 ```
 
-The code above gives us a way to handle requests to the ```/provider-states``` path and
+The code above gives us a way to handle requests to the ```/provider-states/``` path and
 based on the ```ProviderState.State``` requested run some associated code but in the code
 above the ```_providerStates``` is empty so let's update the constructor to set up two states
 and the associated code. The states to be added are:
 
 1. "There is data"
 
-This state will create a text file called ```somedata.txt``` at
-```[RepositoryRoot]/YourSolution/data```. This state is currently used by our Consumer
-Pact test.
+This state will create a text file called ```somedata.txt``` in your operation system's temporary
+directory. We used this directory because we experienced some inconsistencies between different
+operation systems when using relative paths.
 
 2. "There is no data"
 
-This state will delete the text file ```somedata.txt``` at
-```[RepositoryRoot]/YourSolution/data``` if it exists. This state is not currently used
-by our Consumer Pact test but could be if some more test cases were added ;).
+This state will delete the text file ```somedata.txt``` from your operating system's temporary
+directory if it exists. This state is not currently used by our Consumer Pact test but could be 
+if some more test cases were added ;).
 
 The code for this looks like:
 
 ```csharp
 public class ProviderStateMiddleware
 {
-    private const string ConsumerName = "Consumer";
-    private readonly RequestDelegate _next;
-    private readonly IDictionary<string, Action> _providerStates;
+        private const string ConsumerName = "Consumer";
+        private readonly RequestDelegate _next;
+        private readonly IDictionary<string, Action> _providerStates;
 
-    public ProviderStateMiddleware(RequestDelegate next)
-    {
-        _next = next;
-        _providerStates = new Dictionary<string, Action>
+        public ProviderStateMiddleware(RequestDelegate next)
         {
+            _next = next;
+            _providerStates = new Dictionary<string, Action>
             {
-                "There is no data",
-                RemoveAllData
-            },
+                {
+                    "There is no data",
+                    RemoveAllData
+                },
+                {
+                    "There is data",
+                    AddData
+                }
+            };
+        }
+
+        private void RemoveAllData()
+        {
+            var deletePath = Path.Combine(DataPath(), "somedata.txt");
+
+            if (File.Exists(deletePath))
             {
-                "There is data",
-                AddData
+                File.Delete(deletePath);
             }
-        };
-    }
-
-    private void RemoveAllData()
-    {
-        string path = Path.Combine(Directory.GetCurrentDirectory(), @"../../../../../data");
-        var deletePath = Path.Combine(path, "somedata.txt");
-
-        if (File.Exists(deletePath))
-        {
-            File.Delete(deletePath);
         }
-    }
 
-    private void AddData()
-    {
-        string path = Path.Combine(Directory.GetCurrentDirectory(), @"../../../../../data");
-        var writePath = Path.Combine(path, "somedata.txt");
-
-        if (!File.Exists(writePath))
+        private void AddData()
         {
-            File.Create(writePath);
+            var writePath = Path.Combine(DataPath(), "somedata.txt");
+
+            if (!Directory.Exists(DataPath()))
+            {
+                Directory.CreateDirectory(DataPath());
+            }
+
+            if (!File.Exists(writePath))
+            {
+                File.Create(writePath);
+            }
         }
-    }
+
+        private string DataPath()
+        {
+            return Path.Combine(Path.GetTempPath(), "data");
+        }
 ```
 
 Now we have initialised our ```_providerStates``` field with the two states which map to
@@ -690,8 +680,7 @@ namespace tests.Middleware
 
         private void RemoveAllData()
         {
-            string path = Path.Combine(Directory.GetCurrentDirectory(), @"../../../../../data");
-            var deletePath = Path.Combine(path, "somedata.txt");
+            var deletePath = Path.Combine(DataPath(), "somedata.txt");
 
             if (File.Exists(deletePath))
             {
@@ -701,8 +690,12 @@ namespace tests.Middleware
 
         private void AddData()
         {
-            string path = Path.Combine(Directory.GetCurrentDirectory(), @"../../../../../data");
-            var writePath = Path.Combine(path, "somedata.txt");
+            var writePath = Path.Combine(DataPath(), "somedata.txt");
+
+            if (!Directory.Exists(DataPath()))
+            {
+                Directory.CreateDirectory(DataPath());
+            }
 
             if (!File.Exists(writePath))
             {
@@ -710,11 +703,16 @@ namespace tests.Middleware
             }
         }
 
+        private string DataPath()
+        {
+            return Path.Combine(Path.GetTempPath(), "data");
+        }
+
         public async Task Invoke(HttpContext context)
         {
-            if (context.Request.Path.Value == "/provider-states")
+            if (context.Request.Path.Value == "/provider-states/")
             {
-                this.HandleProviderStatesRequest(context);
+                await this.HandleProviderStatesRequestAsync(context);
                 await context.Response.WriteAsync(String.Empty);
             }
             else
@@ -723,7 +721,7 @@ namespace tests.Middleware
             }
         }
 
-        private void HandleProviderStatesRequest(HttpContext context)
+        private async Task HandleProviderStatesRequestAsync(HttpContext context)
         {
             context.Response.StatusCode = (int)HttpStatusCode.OK;
 
@@ -733,14 +731,13 @@ namespace tests.Middleware
                 string jsonRequestBody = String.Empty;
                 using (var reader = new StreamReader(context.Request.Body, Encoding.UTF8))
                 {
-                    jsonRequestBody = reader.ReadToEnd();
+                    jsonRequestBody = await reader.ReadToEndAsync();
                 }
 
                 var providerState = JsonConvert.DeserializeObject<ProviderState>(jsonRequestBody);
 
                 //A null or empty provider state key must be handled
-                if (providerState != null && !String.IsNullOrEmpty(providerState.State) &&
-                    providerState.Consumer == ConsumerName)
+                if (providerState != null && !String.IsNullOrEmpty(providerState.State))
                 {
                     _providerStates[providerState.State].Invoke();
                 }
@@ -750,11 +747,10 @@ namespace tests.Middleware
 }
 ```
 
-#### Step 4.1.2 - Starting the Provider States API When the Pact Tests Start
+#### Step 4.1.2 - Configure custom XUnit output
 
-Now we have a Provider States API we need to start it when our Provider Pact tests start.
-To do this first rename the provided test class when you created the XUnit project to
-```ProviderApiTests.cs``` and include the code below:
+The test constructor has an instance of ```ITestOutputHelper``` injected in order to capture
+console output to standard out, unfortunately XUnit does not do this by default.
 
 ```csharp
 using System;
@@ -769,129 +765,26 @@ using Xunit.Abstractions;
 
 namespace tests
 {
-    public class ProviderApiTests : IDisposable
+    public class ProviderApiTests
     {
-        private string _providerUri { get; }
-        private string _pactServiceUri { get; }
-        private IWebHost _webHost { get; }
+        private string _pactServiceUri = "http://127.0.0.1:9001";
         private ITestOutputHelper _outputHelper { get; }
 
         public ProviderApiTests(ITestOutputHelper output)
         {
             _outputHelper = output;
-            _providerUri = "http://localhost:9000";
-            _pactServiceUri = "http://localhost:9001";
-
-            _webHost = WebHost.CreateDefaultBuilder()
-                .UseUrls(_pactServiceUri)
-                .UseStartup<TestStartup>()
-                .Build();
-
-            _webHost.Start();
         }
 
         [Fact]
         public void EnsureProviderApiHonoursPactWithConsumer()
         {
         }
-
-        #region IDisposable Support
-        private bool disposedValue = false; // To detect redundant calls
-
-        protected virtual void Dispose(bool disposing)
-        {
-            if (!disposedValue)
-            {
-                if (disposing)
-                {
-                    _webHost.StopAsync().GetAwaiter().GetResult();
-                    _webHost.Dispose();
-                }
-
-                disposedValue = true;
-            }
-        }
-
-        // This code added to correctly implement the disposable pattern.
-        public void Dispose()
-        {
-            // Do not change this code. Put cleanup code in Dispose(bool disposing) above.
-            Dispose(true);
-        }
-        #endregion
     }
 }
 ```
 
-Reading the code above when the ```EnsureProviderApiHonoursPactWithConsumer()``` test is
-run using the ```dotnet test``` command at the command line the constructor will create
-a new HTTP server with our Provider States API and store it in the ```_webHost``` property.
-Once stored it will start the server so now our test once written can send requests to
-```http://localhost:9001/provider-states``` to manipulate the state of our Provider API.
-
-There are two other things to note:
-
-* The Class implements IDisposable to ensure our Provider States API server is stopped
-when the test is completed.
-* The test requires a running instance of the Provider API server to verify the
-responses match those expected in the Pact file. This server is not started by the tests.
-
-### Step 4.2 - Creating the Provider API Pact Test
-
-With our Provider States API in place and managed by our test when it is run we can
-complete our test. Update the ```EnsureProviderApiHonoursPactWithConsumer()``` test
-to:
-
-```csharp
-[Fact]
-public void EnsureProviderApiHonoursPactWithConsumer()
-{
-    // Arrange
-    var config = new PactVerifierConfig
-    {
-
-        // NOTE: We default to using a ConsoleOutput,
-        // however xUnit 2 does not capture the console output,
-        // so a custom outputter is required.
-        Outputters = new List<IOutput>
-                        {
-                            new XUnitOutput(_outputHelper)
-                        },
-
-        // Output verbose verification logs to the test output
-        Verbose = true
-    };
-
-    //Act / Assert
-    IPactVerifier pactVerifier = new PactVerifier(config);
-    pactVerifier.ProviderState($"{_pactServiceUri}/provider-states")
-        .ServiceProvider("Provider", _providerUri)
-        .HonoursPactWith("Consumer")
-        .PactUri(@"..\..\..\..\..\pacts\consumer-provider.json")
-        .Verify();
-}
-```
-
-The **Act/Assert** part of this test creates a new
-[PactVerifier](https://github.com/pact-foundation/pact-net/blob/master/PactNet/PactVerifier.cs)
-instance which first uses a call to ```ProviderState``` to know where our Provider States
-API is hosted. Next, the ```ServiceProvider``` method takes the name of the Provider being
-verified in our case **Provider** and a URI to where it is hosted. Then the
-```HonoursPactWith()``` method tells Pact the name of the consumer that generated the Pact
-which needs to be verified with the Provider API - in our case **Consumer**.  Finally, in
-our workshop, we point Pact directly to the Pact File (instead of hosting elsewhere) and 
-call ```Verify``` to test that the mocked request and responses in the Pact file for our
-Consumer and Provider match the real responses from the Provider API.
-
-However there is one last step - the test currently doesn't compile as the
-```XUnitOutput``` class does not exist - so we will create it.
-
-### Step 4.2.1 - Creating the XUnitOutput Class
-
-As noted by the comment in ```ProviderApiTests``` XUnit doesn't capture the output we want
-to show in the console to tell us if a test run as passed or failed. So first create the
-folder ```[RepositoryRoot]/YourSolution/Provider/tests/XUnitHelpers``` and inside create
-the file ```XUnitOutput.cs``` and the corresponding class which should look like:
+Create the folder ```[RepositoryRoot]/YourSolution/Provider/tests/XUnitHelpers``` and inside create the file 
+```XUnitOutput.cs``` and the corresponding class which should look like:
 
 ```csharp
 using PactNet.Infrastructure.Outputters;
@@ -916,9 +809,53 @@ namespace tests.XUnitHelpers
 }
 ```
 
-This class will ensure the output from Pact is displayed in the console. How this works
-is beyond the scope of this workshop but you can read more at
-[Capturing Output](https://xunit.github.io/docs/capturing-output.html).
+### Step 4.2 - Creating the Provider API Pact Test
+
+With our Provider States API in place and managed by our test when it is run we can
+complete our test. Update the ```EnsureProviderApiHonoursPactWithConsumer()``` test
+to:
+
+```csharp
+[Fact]
+public void EnsureProviderApiHonoursPactWithConsumer()
+{
+    // Arrange
+    var config = new PactVerifierConfig
+    {
+        // NOTE: We default to using a ConsoleOutput, however xUnit 2 does not capture the console output,
+        // so a custom outputter is required.
+        Outputters = new List<IOutput>
+            {
+                new XUnitOutput(_outputHelper)
+            }
+    };
+
+    using (var _webHost = WebHost.CreateDefaultBuilder().UseStartup<TestStartup>().UseUrls(_pactServiceUri).Build())
+    {
+        _webHost.Start();
+
+        //Act / Assert
+        IPactVerifier pactVerifier = new PactVerifier(config);
+        var pactFile = new FileInfo(@"../../../../../pacts/consumer-provider.json");
+        pactVerifier.FromPactFile(pactFile)
+            .WithProviderStateUrl(new Uri($"{_pactServiceUri}/provider-states"))
+            .ServiceProvider("Provider", new Uri(_pactServiceUri))
+            .HonoursPactWith("Consumer")
+            .Verify();
+    }
+}
+```
+
+The **Act/Assert** part of this test creates a new
+[PactVerifier](https://github.com/pact-foundation/pact-net/blob/master/PactNet/PactVerifier.cs)
+instance which first uses a call to ```ProviderState``` to know where our Provider States
+API is hosted. Next, the ```ServiceProvider``` method takes the name of the Provider being
+verified in our case **Provider** and a URI to where it is hosted. Then the
+```HonoursPactWith()``` method tells Pact the name of the consumer that generated the Pact
+which needs to be verified with the Provider API - in our case **Consumer**.  Finally, in
+our workshop, we point Pact directly to the Pact File (instead of hosting elsewhere) and 
+call ```Verify``` to test that the mocked request and responses in the Pact file for our
+Consumer and Provider match the real responses from the Provider API.
 
 ### Step 4.3 - Running Your Provider API Pact Test
 
@@ -927,34 +864,12 @@ requests to the Provider API and we have a Pact test in the Provider API which c
 this Pact file to verify the mocks match the actual responses we should run the Provider
 tests!
 
-### Step 4.3.1 - Start Your Provider API Locally
-
-In the command line navigate to ```[RepositoryRoot]/YourSolution/Provider/src``` and run
-the command below to start the server:
-
-```
-dotnet run
-```
-
-This should show ouput similar to:
-
-```
-YourPC:src thomas.shipley$ dotnet run
-Using launch settings from /Users/thomas.shipley/code/thomas/pact-workshop-dotnet-core-v1/YourSolution/Provider/src/Properties/launchSettings.json...
-Hosting environment: Development
-Content root path: /Users/thomas.shipley/code/thomas/pact-workshop-dotnet-core-v1/YourSolution/Provider/src
-Now listening on: http://localhost:9000
-Application started. Press Ctrl+C to shut down.
-```
-
-If you see the output above leave that server running and move on to the next step!
-
-### Step 4.3.2 - Run your Provider API Pact Test
+### Step 4.3.1 - Run your Provider API Pact Test
 
 First, confirm you have a Pact file at ```[RepositoryRoot]/YourSolution/pacts``` called
 consumer-provider.json.
 
-Next, create another command line window and navigate to
+Next, create a command line window and navigate to
 ```[RepositoryRoot]/YourSolution/Provider/tests``` and to run the tests type in and execute
 the command below:
 
@@ -965,41 +880,31 @@ dotnet test
 Once you run this command and it completes you will hopefully see some output which looks like:
 
 ```
-YourPC:tests thomas.shipley$ dotnet test
-Build started, please wait...
-Build completed.
-
-Test run for /Users/thomas.shipley/code/thomas/pact-workshop-dotnet-core-v1/YourSolution/Provider/tests/bin/Debug/netcoreapp2.0/tests.dll(.NETCoreApp,Version=v2.0)
-Microsoft (R) Test Execution Command Line Tool Version 15.3.0-preview-20170628-02
+  Determining projects to restore...
+  Restored /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v2/CompletedSolution/Provider/src/provider.csproj (in 75 ms).
+  Restored /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v2/CompletedSolution/Provider/tests/tests.csproj (in 344 ms).
+  provider -> /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v2/CompletedSolution/Provider/src/bin/Debug/netcoreapp3.1/provider.dll
+  tests -> /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v2/CompletedSolution/Provider/tests/bin/Debug/netcoreapp3.1/tests.dll
+Test run for /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v2/CompletedSolution/Provider/tests/bin/Debug/netcoreapp3.1/tests.dll (.NETCoreApp,Version=v3.1)
+Microsoft (R) Test Execution Command Line Tool Version 16.11.0
 Copyright (c) Microsoft Corporation.  All rights reserved.
 
 Starting test execution, please wait...
-[xUnit.net 00:00:03.1234490]   Discovering: tests
-[xUnit.net 00:00:03.2294800]   Discovered:  tests
-[xUnit.net 00:00:03.2992030]   Starting:    tests
-info: Microsoft.AspNetCore.DataProtection.KeyManagement.XmlKeyManager[0]
-      User profile is available. Using '/Users/thomas.shipley/.aspnet/DataProtection-Keys' as key repository; keys will not be encrypted at rest.
-info: Microsoft.AspNetCore.Hosting.Internal.WebHost[1]
-      Request starting HTTP/1.1 POST http://localhost:9001/provider-states application/json 74
-info: Microsoft.AspNetCore.Hosting.Internal.WebHost[2]
-      Request finished in 24.308ms 200 
-info: Microsoft.AspNetCore.Hosting.Internal.WebHost[1]
-      Request starting HTTP/1.1 POST http://localhost:9001/provider-states application/json 80
-info: Microsoft.AspNetCore.Hosting.Internal.WebHost[2]
-      Request finished in 1.849ms 200 
-info: Microsoft.AspNetCore.Hosting.Internal.WebHost[1]
-      Request starting HTTP/1.1 POST http://localhost:9001/provider-states application/json 74
-info: Microsoft.AspNetCore.Hosting.Internal.WebHost[2]
-      Request finished in 0.476ms 200 
-info: Microsoft.AspNetCore.Hosting.Internal.WebHost[1]
-      Request starting HTTP/1.1 POST http://localhost:9001/provider-states application/json 74
-info: Microsoft.AspNetCore.Hosting.Internal.WebHost[2]
-      Request finished in 0.217ms 200 
-[xUnit.net 00:00:06.8562100]   Finished:    tests
+A total of 1 test files matched the specified pattern.
 
-Total tests: 1. Passed: 1. Failed: 0. Skipped: 0.
-Test Run Successful.
-Test execution time: 7.9642 Seconds
+Verifying a pact between Consumer and Provider
+  Given There is data
+  Given There is no data
+  Given There is data
+  Given There is data
+  A invalid GET request for Date Validation with invalid date parameter
+    returns a response which
+      has status code 400 (OK)
+      includes headers
+        "Content-Type" with value "application/json; charset=utf-8" (OK)
+      has a matching body (OK)
+
+Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: < 1 ms - /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v2/CompletedSolution/Provider/tests/bin/Debug/netcoreapp3.1/tests.dll (netcoreapp3.1)
 ```
 
 Hopefully, you see the above output which means your Pact Provider test was successful!
