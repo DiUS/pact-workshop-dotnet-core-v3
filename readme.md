@@ -63,7 +63,7 @@ file so that the libraries can be downloaded.
 
 ## Step 1 - Fork the Repo & Explore the Code!
 
-Create a fork of [pact-workshop-dotnet-core-v1](https://github.com/tdshipley/pact-workshop-dotnet-core-v1) and familiarise yourself with
+Create a fork of [pact-workshop-dotnet-core-v2](https://github.com/dius/pact-workshop-dotnet-core-v2) and familiarise yourself with
 its contents. There are two main folders to be aware of:
 
 ### CompletedSolution
@@ -160,16 +160,8 @@ This will create an empty XUnit project with all the references you need... expe
 to run one of the following commands:
 
 ```
-# Windows
-dotnet add package PactNet.Windows --version 2.2.1
-
-# OSX
-dotnet add package PactNet.OSX --version 2.2.1
-
-# Linux
-dotnet add package PactNet.Linux.x64 --version 2.2.1
-# Or...
-dotnet add package PactNet.Linux.x86 --version 2.2.1
+dotnet add package PactNet --version 4.0.0-beta
+dotnet add package PactNet.Native --version 0.1.0-beta
 ```
 
 Finally you will need to add a reference to the Consumer Client project src code. So again
@@ -185,105 +177,49 @@ need to do to test the code!
 Once this command runs successfully you will have in ```[RepositoryRoot]/YourSolution/Consumer/tests``` an empty .NET Core XUnit Project with Pact
 and we can begin to setup Pact!
 
-#### NB - Multiple OS Environments
-
-When using Pact tests for your production projects you might want to support multiple OSes. You can with .NET Core specify different packages in your
-**.csproj** file based on the operating system but for the purpose of this workshop this is unnecessary. Other language implementations do not always
-require OS based packages.
-
 ### Step 3.2 - Configuring the Mock HTTP Pact Server on the Consumer
 
 Pact works by placing a mock HTTP server between the consumer and provider(s) in an application to handle mocked provider interactions on the consumer
-side and replay this actions on the provider side to verify them. So before we can write Pact tests we need to setup and configure this mock server.
-This server will be used for all the tests in our Consumer test project.
+side and replay this actions on the provider side to verify them. With previous versions of PactNet this was something we had to set up ourselves but
+with version 4.0.0 it's integrated into the library so no additional setup is ncessary.
 
-XUnit shares common resources in a few different ways. For this workshop, we shall create a [Class Fixture](https://xunit.github.io/docs/shared-context.html)
-which will share our mock HTTP server between our consumer tests. Start by creating a file and class called ```ConsumerPactClassFixture.cs``` in the root of
-the Consumer test project (```[RepositoryRoot]/YourSolution/Consumer/tests```). It should look like:
+### Step 3.3 - Creating Your First Pact Test for the Consumer Client
 
-```csharp
-using System;
-using Xunit;
-
-namespace tests
-{
-    // This class is responsible for setting up a shared
-    // mock server for Pact used by all the tests.
-    // XUnit can use a Class Fixture for this.
-    // See: https://goo.gl/hSq4nv
-    public class ConsumerPactClassFixture
-    {
-    }
-}
-```
-
-#### Step 3.2.1 - Setup using PactBuilder
-
-The [PactBuilder](https://github.com/pact-foundation/pact-net/blob/master/PactNet/PactBuilder.cs) is the class used to build out the configuration we
-need for Pact which defines among other things where to find our mock HTTP server.
-
-First, at the top of your class add some properties which will be used to store your instance of PactBuilder and store Mock HTTP Server properties:
+Update the test class added by the ```dotnet new xunit``` command to be named ```ConsumerPactTests``` and update the file name to match. 
+With that done update the constructor to initialise the Pact
 
 ```csharp
 using System;
+using System.Net;
+using System.Net.Http;
 using Xunit;
+using Consumer;
 using PactNet;
-using PactNet.Mocks.MockHttpService;
+using PactNet.Native;
+using Xunit.Abstractions;
+using Newtonsoft.Json.Serialization;
+using Newtonsoft.Json;
 
 namespace tests
 {
-    // This class is responsible for setting up a shared
-    // mock server for Pact used by all the tests.
-    // XUnit can use a Class Fixture for this.
-    // See: https://goo.gl/hSq4nv
-    public class ConsumerPactClassFixture
+    public class ConsumerPactTests
     {
-        public IPactBuilder PactBuilder { get; private set; }
-        public IMockProviderService MockProviderService { get; private set; }
+        private IPactBuilderV3 pact;
 
-        public int MockServerPort { get { return 9222; } }
-        public string MockProviderServiceBaseUri { get { return String.Format("http://localhost:{0}", MockServerPort); } }
-    }
-}
-```
-
-Above we have setup some properties which ultimately say our Mock HTTP Server will be hosted at ```http://localhost:9222```. With that in place the next
-step is to add a constructor to start the other properties starting with PactBuilder:
-
-```csharp
-using System;
-using Xunit;
-using PactNet;
-using PactNet.Mocks.MockHttpService;
-
-namespace tests
-{
-    // This class is responsible for setting up a shared
-    // mock server for Pact used by all the tests.
-    // XUnit can use a Class Fixture for this.
-    // See: https://goo.gl/hSq4nv
-    public class ConsumerPactClassFixture
-    {
-        public IPactBuilder PactBuilder { get; private set; }
-        public IMockProviderService MockProviderService { get; private set; }
-
-        public int MockServerPort { get { return 9222; } }
-        public string MockProviderServiceBaseUri { get { return String.Format("http://localhost:{0}", MockServerPort); } }
-
-        public ConsumerPactClassFixture()
+        public ConsumerPactTests(ITestOutputHelper output)
         {
-            // Using Spec version 2.0.0 more details at https://goo.gl/UrBSRc
-            var pactConfig = new PactConfig
+            var Config = new PactConfig
             {
-                SpecificationVersion = "2.0.0",
                 PactDir = @"..\..\..\..\..\pacts",
-                LogDir = @".\pact_logs"
+                LogDir = @".\pact_logs",
+                Outputters = new[] { new XUnitOutput(output) },
+                DefaultJsonSettings = new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                }
             };
 
-            PactBuilder = new PactBuilder(pactConfig);
-
-            PactBuilder.ServiceConsumer("Consumer")
-                       .HasPactWith("Provider");
+            pact = Pact.V3("Consumer", "Provider", Config).UsingNativeBackend();
         }
     }
 }
@@ -291,173 +227,15 @@ namespace tests
 
 The constructor is doing a couple of things right now:
 
-* It creates a [PactConfig](https://github.com/pact-foundation/pact-net/blob/master/PactNet/PactConfig.cs) object which allows us to specify:
-  * The Pact files will be generated and overwritten too (```[RepositoryRoot]/pacts```).
-  * The Pact Log files will be written to the executing directory.
-  * The project will follow [Pact Specification](https://github.com/pact-foundation/pact-specification) 2.0.0
-* Define the name of our Consumer project (Consumer) which will be used in other Pact Test projects.
-  * Define the relationships our Consumer project has with others. In this case, just one called "Provider" this name will map to the same name used in the
-  Provider Project Pact tests.
+  * It creates a PactConfig object which allows us to specify:
+    * The Pact files will be generated and overwritten too ([RepositoryRoot]/pacts).
+    * The Pact Log files will be written to the executing directory.
 
-The final thing it needs to do is create an instance of our Mock HTTP service using the now created configuration:
+  * Creates a `Pact` object that follows the Pact Specification v3
+    * Define the name of our Consumer project (Consumer) which will be used in other Pact Test projects.
+    * Define the relationships our Consumer project has with others. In this case, just one called "Provider" this name will map to the same name used in the Provider Project Pact tests.
+    * Tells Pact to use the Rust based backend to run the tests `UsingNativeBackend()`
 
-```csharp
-using System;
-using Xunit;
-using PactNet;
-using PactNet.Mocks.MockHttpService;
-
-namespace tests
-{
-    // This class is responsible for setting up a shared
-    // mock server for Pact used by all the tests.
-    // XUnit can use a Class Fixture for this.
-    // See: https://goo.gl/hSq4nv
-    public class ConsumerPactClassFixture
-    {
-        public IPactBuilder PactBuilder { get; private set; }
-        public IMockProviderService MockProviderService { get; private set; }
-
-        public int MockServerPort { get { return 9222; } }
-        public string MockProviderServiceBaseUri { get { return String.Format("http://localhost:{0}", MockServerPort); } }
-
-        public ConsumerPactClassFixture()
-        {
-            // Using Spec version 2.0.0 more details at https://goo.gl/UrBSRc
-            var pactConfig = new PactConfig
-            {
-                SpecificationVersion = "2.0.0",
-                PactDir = @"..\..\..\..\..\pacts",
-                LogDir = @".\pact_logs"
-            };
-
-            PactBuilder = new PactBuilder(pactConfig);
-
-            PactBuilder.ServiceConsumer("Consumer")
-                       .HasPactWith("Provider");
-
-            MockProviderService = PactBuilder.MockService(MockServerPort);
-        }
-    }
-}
-```
-
-By adding the line ```MockProviderService = PactBuilder.MockService(MockServerPort);``` to the constructor we have created our Mock HTTP Server with
-our specific configuration. We are nearly ready to start mocking out Provider interactions but (in my best Columbo voice) there is [just one more
-thing](https://www.youtube.com/watch?v=biW9BbWJtQU).
-
-#### Step 3.2.2 Tearing Down the Pact Mock HTTP Server & Generating the Pact File
-
-If the tests were to use the Class Fixture above as is right now the Mock Server might be left running once the tests have finished and worse no Pact file
-would be created - so we wouldn't be able to verify our mocks with the Provider API!
-
-
-It is always a good idea in your tests to teardown any resources used in them at end of the test run. However [XUnit doesn't implement teardown methods](http://mrshipley.com/2018/01/10/implementing-a-teardown-method-in-xunit/) so instead we can implement the IDisposable interface to handle the clean up
-of the Mock HTTP Server which will at the same time generate our Pact file. To do this update your ConsumerPactClassFixture class to conform to IDisposable
-and clean up the server using ```PactBuilder.Build()```:
-
-```csharp
-using System;
-using Xunit;
-using PactNet;
-using PactNet.Mocks.MockHttpService;
-
-namespace tests
-{
-    // This class is responsible for setting up a shared
-    // mock server for Pact used by all the tests.
-    // XUnit can use a Class Fixture for this.
-    // See: https://goo.gl/hSq4nv
-    public class ConsumerPactClassFixture : IDisposable
-    {
-        public IPactBuilder PactBuilder { get; private set; }
-        public IMockProviderService MockProviderService { get; private set; }
-
-        public int MockServerPort { get { return 9222; } }
-        public string MockProviderServiceBaseUri { get { return String.Format("http://localhost:{0}", MockServerPort); } }
-
-        public ConsumerPactClassFixture()
-        {
-            // Using Spec version 2.0.0 more details at https://goo.gl/UrBSRc
-            var pactConfig = new PactConfig
-            {
-                SpecificationVersion = "2.0.0",
-                PactDir = @"..\..\..\..\..\pacts",
-                LogDir = @".\pact_logs"
-            };
-
-            PactBuilder = new PactBuilder(pactConfig);
-
-            PactBuilder.ServiceConsumer("Consumer")
-                       .HasPactWith("Provider");
-
-            MockProviderService = PactBuilder.MockService(MockServerPort);
-        }
-
-        #region IDisposable Support
-        private bool disposedValue = false; // To detect redundant calls
-
-        protected virtual void Dispose(bool disposing)
-        {
-            if (!disposedValue)
-            {
-                if (disposing)
-                {
-                    // This will save the pact file once finished.
-                    PactBuilder.Build();
-                }
-
-                disposedValue = true;
-            }
-        }
-
-        // This code added to correctly implement the disposable pattern.
-        public void Dispose()
-        {
-            // Do not change this code. Put cleanup code in Dispose(bool disposing) above.
-            Dispose(true);
-        }
-        #endregion
-    }
-}
-```
-
-The ```PactBuilder.Build()``` method will teardown the Mock HTTP Server it uses for tests and generates the Pact File used for verifying mocks with
-providers. It will always overwrite the Pact file with the results of the latest test run.
-
-### Step 3.3 - Creating Your First Pact Test for the Consumer Client
-
-With the class fixture created to manage the Mock HTTP Server update the test class added
-by the ```dotnet new xunit``` command to be named ```ConsumerPactTests``` and update
-the file name to match. With that done update the class to conform to the IClassFixture
-interface and create an instance of your class fixture in the constructor.
-
-```csharp
-using System;
-using Xunit;
-using PactNet.Mocks.MockHttpService;
-using PactNet.Mocks.MockHttpService.Models;
-using Consumer;
-using System.Collections.Generic;
-
-namespace tests
-{
-    public class ConsumerPactTests : IClassFixture<ConsumerPactClassFixture>
-    {
-        private IMockProviderService _mockProviderService;
-        private string _mockProviderServiceBaseUri;
-
-        public ConsumerPactTests(ConsumerPactClassFixture fixture)
-        {
-            _mockProviderService = fixture.MockProviderService;
-            _mockProviderService.ClearInteractions(); //NOTE: Clears any previously registered interactions before the test is run
-            _mockProviderServiceBaseUri = fixture.MockProviderServiceBaseUri;
-        }
-    }
-}
-```
-
-With an instance of our Mock HTTP Server in our test class, we can add the first test. 
 All the Pact tests added during this workshop will follow the same three steps:
 
 1. Mock out an interaction with the Provider API.
@@ -480,30 +258,25 @@ public void ItHandlesInvalidDateParam()
 {
     // Arange
     var invalidRequestMessage = "validDateTime is not a date or time";
-    _mockProviderService.Given("There is data")
-                        .UponReceiving("A invalid GET request for Date Validation with invalid date parameter")
-                        .With(new ProviderServiceRequest 
-                        {
-                            Method = HttpVerb.Get,
-                            Path = "/api/provider",
-                            Query = "validDateTime=lolz"
-                        })
-                        .WillRespondWith(new ProviderServiceResponse {
-                            Status = 400,
-                            Headers = new Dictionary<string, object>
-                            {
-                                { "Content-Type", "application/json; charset=utf-8" }
-                            },
-                            Body = new 
-                            {
-                                message = invalidRequestMessage
-                            }
-                        });
+    pact.UponReceiving("A invalid GET request for Date Validation with invalid date parameter")
+            .Given("There is data")
+            .WithRequest(HttpMethod.Get, "/api/provider")
+            .WithQuery("validDateTime", "lolz")
+        .WillRespond()
+            .WithStatus(HttpStatusCode.BadRequest)
+            .WithHeader("Content-Type", "application/json; charset=utf-8")
+            .WithJsonBody(new { message = invalidRequestMessage });
 }
 ```
 
-The code above uses the ```_mockProviderService``` to setup our mocked response using Pact.
+The code above uses the ```pact``` to setup our mocked response.
 Breaking it down by the different method calls:
+
+* ```UponReceiving("")```
+
+When this method executes it will add a description of what the mocked HTTP request
+represents to the Pact file. It is important to be accurate here as this message is what
+will be shown when a test fails to help a developer understand what went wrong.
 
 * ```Given("")```
 
@@ -513,27 +286,29 @@ requires to be in place before running. In our example, we require the Provider 
 have some data. The Provider API Pact test will parse these given statements and map
 them to methods which will execute code to setup the required state(s).
 
-* ```UponReceiving("")```
-
-When this method executes it will add a description of what the mocked HTTP request
-represents to the Pact file. It is important to be accurate here as this message is what
-will be shown when a test fails to help a developer understand what went wrong.
-
-* ```With(ProviderServiceRequest)```
+* ```WithRequest(HttpMethod.Get, "/api/provider")```
 
 Here is where the configuration for your mocked HTTP request is added. In our example
-we have added what *Method* the request is (Get) the *Path* the request is made to 
-(api/provider/) and the query parameters which in this test is our invalid date time
-string (validDateTime=lolz).
+we have added what *Method* the request is (Get) the *Path* the request is made to  (/api/provider/)
 
-* ```WillRespondWith(ProviderServiceResponse)```
+* ```WithQuery("validDateTime", "lolz")```
 
-Finally, in this method, we define what we expect back from the Provider API for our mocked
-request. In our case a ```400``` HTTP Code and a message in the body explaining what the
-failure was. 
+The query parameters passed to the endpoint as key value pairs
+
+* ```WillRespond()```
+
+Used to indicate that the start of the response back from the Provider API
+
+* WithStatus(HttpStatusCode.BadRequest)
+
+The response will have an HTTP status code of ```400```
+
+* With JsonBody(new { message = invalidRequestMessage })
+
+Defines the body of the response message
 
 All the methods above on running the test will generate a *Pact file* which will be used
-by the Provider, API to make the same requests against the actual API to ensure the responses
+by the Provider API to make the same requests against the actual API to ensure the responses
 match the expectations of the Consumer.
 
 #### Step 3.3.2 - Completing Your First Consumer Test
@@ -543,36 +318,26 @@ you would write; perform an action and assert the result:
 
 ```csharp
 [Fact]
-public void ItHandlesInvalidDateParam()
+public async void ItHandlesInvalidDateParam()
 {
     // Arange
     var invalidRequestMessage = "validDateTime is not a date or time";
-    _mockProviderService.Given("There is data")
-                        .UponReceiving("A invalid GET request for Date Validation with invalid date parameter")
-                        .With(new ProviderServiceRequest 
-                        {
-                            Method = HttpVerb.Get,
-                            Path = "/api/provider",
-                            Query = "validDateTime=lolz"
-                        })
-                        .WillRespondWith(new ProviderServiceResponse {
-                            Status = 400,
-                            Headers = new Dictionary<string, object>
-                            {
-                                { "Content-Type", "application/json; charset=utf-8" }
-                            },
-                            Body = new 
-                            {
-                                message = invalidRequestMessage
-                            }
-                        });
+    pact.UponReceiving("A invalid GET request for Date Validation with invalid date parameter")
+            .Given("There is data")
+            .WithRequest(HttpMethod.Get, "/api/provider")
+            .WithQuery("validDateTime", "lolz")
+        .WillRespond()
+            .WithStatus(HttpStatusCode.BadRequest)
+            .WithHeader("Content-Type", "application/json; charset=utf-8")
+            .WithJsonBody(new { message = invalidRequestMessage });
 
-    // Act
-    var result = ConsumerApiClient.ValidateDateTimeUsingProviderApi("lolz", _mockProviderServiceBaseUri).GetAwaiter().GetResult();
-    var resultBodyText = result.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+    // Act & Assert
+    await pact.VerifyAsync(async ctx => {
+        var response = await ConsumerApiClient.ValidateDateTimeUsingProviderApi("lolz", ctx.MockServerUri);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains(invalidRequestMessage, body);
+    });
 
-    // Assert
-    Assert.Contains(invalidRequestMessage, resultBodyText);
 }
 ```
 
@@ -585,26 +350,18 @@ Now all that is left to do is run your test. From the
 command at the command line. If successful you should see some output like this:
 
 ```
-YourPC:tests thomas.shipley$ dotnet test
-Build started, please wait...
-Build completed.
-
-Test run for pact-workshop-dotnet-core-v1/YourSolution/Consumer/tests/bin/Debug/netcoreapp2.0/tests.dll(.NETCoreApp,Version=v2.0)
-Microsoft (R) Test Execution Command Line Tool Version 15.3.0-preview-20170628-02
+$ dotnet test
+  Determining projects to restore...
+  Restored /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v2/YourSolution/Consumer/src/consumer.csproj (in 80 ms).
+  Restored /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v2/YourSolution/Consumer/tests/tests.csproj (in 460 ms).
+  consumer -> /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v2/YourSolution/Consumer/src/bin/Debug/netcoreapp3.1/consumer.dll
+  tests -> /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v2/YourSolution/Consumer/tests/bin/Debug/netcoreapp3.1/tests.dll
+Test run for /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v2/YourSolution/Consumer/tests/bin/Debug/netcoreapp3.1/tests.dll (.NETCoreApp,Version=v3.1)
+Microsoft (R) Test Execution Command Line Tool Version 16.11.0
 Copyright (c) Microsoft Corporation.  All rights reserved.
 
 Starting test execution, please wait...
-[xUnit.net 00:00:00.8359010]   Discovering: tests
-[xUnit.net 00:00:00.9334030]   Discovered:  tests
-[xUnit.net 00:00:00.9399270]   Starting:    tests
-[2018-02-15 11:24:24] INFO  WEBrick 1.3.1
-[2018-02-15 11:24:24] INFO  ruby 2.2.2 (2015-04-13) [x86_64-darwin13]
-[2018-02-15 11:24:24] INFO  WEBrick::HTTPServer#start: pid=57443 port=9222
-[xUnit.net 00:00:03.4053200]   Finished:    tests
-
-Total tests: 1. Passed: 1. Failed: 0. Skipped: 0.
-Test Run Successful.
-Test execution time: 1.4248 Seconds
+A total of 1 test files matched the specified pattern.
 ```
 
 If you now navigate to ```[RepositoryRoot]/pacts``` you will see the pact file your test
