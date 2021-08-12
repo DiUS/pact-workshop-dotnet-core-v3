@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Globalization;
 using System.IO;
+using System.Threading;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 
@@ -32,7 +34,7 @@ namespace Provider.Controllers
             DateTime parsedDateTime;
             try
             {
-                parsedDateTime = DateTime.Parse(validDateTime);
+                parsedDateTime = DateTime.Parse(validDateTime, CultureInfo.GetCultureInfo("en-AU").DateTimeFormat);
             }
             catch(Exception)
             {
