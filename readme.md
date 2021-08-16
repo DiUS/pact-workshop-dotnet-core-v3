@@ -242,11 +242,44 @@ All the Pact tests added during this workshop will follow the same three steps:
 2. Interact with the mocked out interaction using our Consumer code.
 3. Assert the result is what we expected.
 
+There will a compilation error related to the ```XUnitOutput``` class which is still missing, we'll add that next
+
+#### Step 3.3.1 - Add XUnitOutput class to capture standard out from Rust process
+
+Unfortunately XUnit does not capture output from standard out by default so we need to add this
+manually. Create a new class file named ```XUnitOutput``` with the following content:
+
+```csharp
+using System;
+using PactNet.Infrastructure.Outputters;
+using Xunit.Abstractions;
+
+namespace tests
+{
+    public class XUnitOutput : IOutput
+    {
+        private readonly ITestOutputHelper _output;
+
+        public XUnitOutput(ITestOutputHelper output)
+        {
+            _output = output;
+        }
+
+        public void WriteLine(string line)
+        {
+            _output.WriteLine(line);
+        }
+    }
+}
+```
+
+This should fix the compilation issue with ```ConsumerPactTest```
+
+#### Step 3.3.1 - Mocking an Interaction with the Provider
+
 For the first test, we shall check that if we pass an invalid date string to our Consumer
 that the Provider API will return a ```400``` response and a message explaining why the
 request is invalid.
-
-#### Step 3.3.1 - Mocking an Interaction with the Provider
 
 Create a test in ```ConsumerPactTests``` called ```ItHandlesInvalidDateParam()``` and
 using the code below mock out our HTTP request to the Provider API which will return a
