@@ -147,6 +147,9 @@ Now we have tested the Provider API and Consumer run successfully on your machin
 that is to say, they work by the *Consumer* defining in there Pact tests first what they expect from a provider which can be verified by the *Provider*.
 So let's follow this convention and create our *Consumer* tests first.
 
+There is a Visual Studio solution file available for your convience, but it will not load until you've gone through the next step because it assumes that
+there is a ```tests.csproj``` project file available. The next step will create this file.
+
 ### Step 3.1 - Creating a Test Project for Consumer with XUnit
 
 Pact cannot execute tests on its own it needs a test runner project. For this workshop, we will be using [XUnit](https://xunit.github.io/) to create the project
