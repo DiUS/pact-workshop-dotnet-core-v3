@@ -410,6 +410,10 @@ Provider API.
 
 ## Step 4 - Testing the Provider Project with Pact
 
+There is a Visual Studio solution file available for your convience, but it will not load until 
+you've gone through this step because it assumes that there is a ```tests.csproj``` project file 
+available.
+
 Navigate to the ```[RepositoryRoot]/YourSolution/Provider/tests``` directory in your
 command line and create another new XUnit project by running the command
 ```dotnet new xunit```. Once again you will also need to add the correct version of
