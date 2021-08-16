@@ -275,7 +275,7 @@ namespace tests
 
 This should fix the compilation issue with ```ConsumerPactTest```
 
-#### Step 3.3.1 - Mocking an Interaction with the Provider
+#### Step 3.3.2 - Mocking an Interaction with the Provider
 
 For the first test, we shall check that if we pass an invalid date string to our Consumer
 that the Provider API will return a ```400``` response and a message explaining why the
@@ -344,7 +344,7 @@ All the methods above on running the test will generate a *Pact file* which will
 by the Provider API to make the same requests against the actual API to ensure the responses
 match the expectations of the Consumer.
 
-#### Step 3.3.2 - Completing Your First Consumer Test
+#### Step 3.3.3 - Completing Your First Consumer Test
 
 With the mocked response setup the rest of the test can be treated like any other test
 you would write; perform an action and assert the result:
