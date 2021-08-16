@@ -28,7 +28,7 @@ namespace Consumer
             }
 
             Console.WriteLine("Validating date...");
-            var result = ConsumerApiClient.ValidateDateTimeUsingProviderApi(dateTimeToValidate, baseUri).GetAwaiter().GetResult();
+            var result = ConsumerApiClient.ValidateDateTimeUsingProviderApi(dateTimeToValidate, new Uri(baseUri)).GetAwaiter().GetResult();
             var resultContentText = result.Content.ReadAsStringAsync().GetAwaiter().GetResult();
             Console.WriteLine(resultContentText);
             Console.WriteLine("...Date validation complete. Goodbye.");
