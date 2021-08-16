@@ -8,7 +8,7 @@ namespace Consumer
     {
         static public async Task<HttpResponseMessage> ValidateDateTimeUsingProviderApi(string dateTimeToValidate, Uri baseUri)
         {
-            using (var client = new HttpClient { BaseAddress = baseUri})
+            using (var client = new HttpClient { BaseAddress = baseUri })
             {
                 try
                 {
