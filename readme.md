@@ -417,8 +417,25 @@ available.
 
 Navigate to the ```[RepositoryRoot]/YourSolution/Provider/tests``` directory in your
 command line and create another new XUnit project by running the command
-```dotnet new xunit```. Once again you will also need to add the correct version of
-the PactNet package using one of the command line commands below:
+```dotnet new xunit```. Unfortunately this creates a test project that targets the wrong sdk.
+To fix this, edit ```tests.csproj``` and update
+
+```
+<Project Sdk="Microsoft.NET.Sdk">
+```
+
+to
+
+```
+<Project Sdk="Microsoft.NET.Sdk.Web">
+```
+
+otherwise everything will build find and seem perfectly fine until you run your tests and they
+fail for no apparent reason. What seems to happen is that endpoints added by controllers are
+not loaded properly so all test executions result in HTTP 404 responses.
+
+You will also need to add the correct version of the PactNet package using one of the command line 
+commands below:
 
 ```
 dotnet add package PactNet --version 4.0.0-beta
@@ -548,7 +565,6 @@ namespace tests.Middleware
 {
     public class ProviderStateMiddleware
     {
-        private const string ConsumerName = "Consumer";
         private readonly RequestDelegate _next;
         private readonly IDictionary<string, Action> _providerStates;
 
@@ -618,7 +634,6 @@ The code for this looks like:
 ```csharp
 public class ProviderStateMiddleware
 {
-        private const string ConsumerName = "Consumer";
         private readonly RequestDelegate _next;
         private readonly IDictionary<string, Action> _providerStates;
 
@@ -627,14 +642,8 @@ public class ProviderStateMiddleware
             _next = next;
             _providerStates = new Dictionary<string, Action>
             {
-                {
-                    "There is no data",
-                    RemoveAllData
-                },
-                {
-                    "There is data",
-                    AddData
-                }
+                { "There is no data", RemoveAllData },
+                { "There is data", AddData }
             };
         }
 
@@ -715,14 +724,8 @@ namespace tests.Middleware
             _next = next;
             _providerStates = new Dictionary<string, Action>
             {
-                {
-                    "There is no data",
-                    RemoveAllData
-                },
-                {
-                    "There is data",
-                    AddData
-                }
+                { "There is no data", RemoveAllData },
+                { "There is data", AddData }
             };
         }
 
@@ -800,6 +803,9 @@ namespace tests.Middleware
 We only need one test class which will be used to verify all test scenarios specified
 in a single pact file. If an API (provider) has multiple pact files (e.g. because of multiple
 consumers), you'll end up with one test class for each pact file.
+
+Rename the auto generated test file ```UnitTest1.cs``` to ```ProviderApiTests``` and add the
+following content:
 
 ```csharp
 using System;
