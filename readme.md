@@ -193,6 +193,7 @@ With that done update the constructor to initialise the Pact
 
 ```csharp
 using System;
+using System.IO;
 using System.Net;
 using System.Net.Http;
 using Xunit;
@@ -213,8 +214,8 @@ namespace tests
         {
             var Config = new PactConfig
             {
-                PactDir = @"..\..\..\..\..\pacts",
-                LogDir = @".\pact_logs",
+                PactDir = Path.Join("..", "..", "..", "..", "..", "pacts"),
+                LogDir = "pact_logs",
                 Outputters = new[] { new XUnitOutput(output) },
                 DefaultJsonSettings = new JsonSerializerSettings
                 {
@@ -424,6 +425,13 @@ dotnet add package PactNet --version 4.0.0-beta
 dotnet add package PactNet.Native --version 0.1.0-beta
 ```
 
+Finally you will need to add a reference to the Provider project src code. 
+So again at the same command line type and run the command:
+
+```
+dotnet add reference ../src/provider.csproj
+```
+
 With all the packages added to our Provider API test project, we are ready to move onto
 the next step; hooking into the application so we can manage test environment state.
 
@@ -484,7 +492,7 @@ namespace tests
 When you created the class above you might have noticed that the compiler has found a
 compilation error because we haven't created the ProviderStateMiddleware class yet.
 
-#### Step 4.1.2 - Creating a The Provider State Middleware
+#### Step 4.1.2 - Creating a Provider State Middleware
 
 When creating a Pact test for a Provider your test needs its own API. The reason for
 this is so it can manage the state of your API based on what the Pact file needs for each
@@ -553,7 +561,7 @@ namespace tests.Middleware
         {
             if (context.Request.Path.Value == "/provider-states/")
             {
-                this.HandleProviderStatesRequest(context);
+                await this.HandleProviderStatesRequest(context);
                 await context.Response.WriteAsync(String.Empty);
             }
             else
@@ -562,7 +570,7 @@ namespace tests.Middleware
             }
         }
 
-        private async Task HandleProviderStatesRequestAsync(HttpContext context)
+        private async Task HandleProviderStatesRequest(HttpContext context)
         {
             context.Response.StatusCode = (int)HttpStatusCode.OK;
 
@@ -787,18 +795,21 @@ namespace tests.Middleware
 }
 ```
 
-#### Step 4.1.2 - Configure custom XUnit output
+#### Step 4.1.2 - Create the test runner
 
-The test constructor has an instance of ```ITestOutputHelper``` injected in order to capture
-console output to standard out, unfortunately XUnit does not do this by default.
+We only need one test class which will be used to verify all test scenarios specified
+in a single pact file. If an API (provider) has multiple pact files (e.g. because of multiple
+consumers), you'll end up with one test class for each pact file.
 
 ```csharp
 using System;
 using System.Collections.Generic;
+using System.IO;
 using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Hosting;
 using PactNet;
 using PactNet.Infrastructure.Outputters;
+using PactNet.Native;
 using tests.XUnitHelpers;
 using Xunit;
 using Xunit.Abstractions;
@@ -822,6 +833,11 @@ namespace tests
     }
 }
 ```
+
+The test constructor has an instance of ```ITestOutputHelper``` injected in order to capture
+console output to standard out, unfortunately XUnit does not do this by default.
+
+#### Step 4.1.3 - Configure custom XUnit output
 
 Create the folder ```[RepositoryRoot]/YourSolution/Provider/tests/XUnitHelpers``` and inside create the file 
 ```XUnitOutput.cs``` and the corresponding class which should look like:
@@ -876,7 +892,7 @@ public void EnsureProviderApiHonoursPactWithConsumer()
 
         //Act / Assert
         IPactVerifier pactVerifier = new PactVerifier(config);
-        var pactFile = new FileInfo(@"../../../../../pacts/consumer-provider.json");
+        var pactFile = new FileInfo(Path.Join("..", "..", "..", "..", "..", "pacts", "consumer-provider.json"));        
         pactVerifier.FromPactFile(pactFile)
             .WithProviderStateUrl(new Uri($"{_pactServiceUri}/provider-states"))
             .ServiceProvider("Provider", new Uri(_pactServiceUri))
