@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Globalization;
 using System.IO;
+using System.Threading;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 
@@ -31,10 +32,9 @@ namespace Provider.Controllers
             }
 
             DateTime parsedDateTime;
-
             try
             {
-                parsedDateTime = DateTime.Parse(validDateTime, new CultureInfo("en-AU", false));
+                parsedDateTime = DateTime.Parse(validDateTime, CultureInfo.GetCultureInfo("en-AU").DateTimeFormat);
             }
             catch(Exception)
             {
@@ -49,7 +49,7 @@ namespace Provider.Controllers
 
         private bool DataMissing()
         {
-            string path = Path.Combine(Directory.GetCurrentDirectory(), @"../../data");
+            string path = Path.Combine(Path.GetTempPath(), "data");
             string pathWithFile = Path.Combine(path, "somedata.txt");
 
             return !System.IO.File.Exists(pathWithFile);
