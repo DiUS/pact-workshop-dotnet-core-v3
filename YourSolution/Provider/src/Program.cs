@@ -14,6 +14,7 @@ namespace Provider
         public static IWebHost BuildWebHost(string[] args) =>
             WebHost.CreateDefaultBuilder(args)
                 .UseStartup<Startup>()
+                .UseUrls("http://localhost:9001")
                 .Build();
     }
 }
