@@ -50,7 +50,7 @@ However before taking part in this workshop please make sure you have:
 * An account at [Github.com](www.github.com)!
 * A text editor/IDE that supports .NET Core. Check out [VSCode](https://code.visualstudio.com/)
 
-# Add the Pacflow Nuget repository to Visual Studio/NuGet.Config
+## Add the Pacflow Nuget repository to Visual Studio/NuGet.Config
 
 In order to use the 4.0.0-beta version of Pact.Net you need to add the Pacflow Nuget repository to Visual Studio and/or your Nuget.Config
 file so that the libraries can be downloaded.
