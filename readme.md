@@ -13,7 +13,7 @@
     - [Step 3.2 - Configuring the Mock HTTP Pact Server on the Consumer](#step-32---configuring-the-mock-http-pact-server-on-the-consumer)
     - [Step 3.3 - Creating Your First Pact Test for the Consumer Client](#step-33---creating-your-first-pact-test-for-the-consumer-client)
   - [Step 4 - Testing the Provider Project with Pact](#step-4---testing-the-provider-project-with-pact)
-    - [Step 4.1 - Creating a Provider State HTTP Server](#step-41---creating-a-provider-state-http-server)
+    - [Step 4.1 - Managing Provider State](#step-41---managing-provider-state)
     - [Step 4.2 - Creating the Provider API Pact Test](#step-42---creating-the-provider-api-pact-test)
     - [Step 4.2.1 - Creating the XUnitOutput Class](#step-421---creating-the-xunitoutput-class)
     - [Step 4.3 - Running Your Provider API Pact Test](#step-43---running-your-provider-api-pact-test)
