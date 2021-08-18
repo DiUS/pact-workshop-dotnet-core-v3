@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Globalization;
 using System.IO;
-using System.Threading;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 
@@ -49,7 +48,7 @@ namespace Provider.Controllers
 
         private bool DataMissing()
         {
-            string path = Path.Combine(Path.GetTempPath(), "data");
+            string path = Path.Join("..", "..", "data");
             string pathWithFile = Path.Combine(path, "somedata.txt");
 
             return !System.IO.File.Exists(pathWithFile);

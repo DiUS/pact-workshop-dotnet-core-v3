@@ -674,7 +674,7 @@ public class ProviderStateMiddleware
 
         private string DataPath()
         {
-            return Path.Combine(Path.GetTempPath(), "data");
+            return Path.Join("..", "..", "data");
         }
 ```
 
