@@ -576,7 +576,7 @@ namespace tests.Middleware
 
         public async Task Invoke(HttpContext context)
         {
-            if (context.Request.Path.Value == "/provider-states/")
+            if (context.Request.Path.StartsWithSegments("/provider-states/"))
             {
                 await this.HandleProviderStatesRequest(context);
                 await context.Response.WriteAsync(String.Empty);
