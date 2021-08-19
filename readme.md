@@ -46,7 +46,7 @@ write code in any other language you should be fine.
 
 However before taking part in this workshop please make sure you have:
 
-* [.NET Core SDK](https://www.microsoft.com/net/download/)
+* [.NET Core SDK](https://www.microsoft.com/net/download/). Make sure you pick version 3.1 for this.
 * An account at [Github.com](www.github.com)!
 * A text editor/IDE that supports .NET Core. Check out [VSCode](https://code.visualstudio.com/)
 
