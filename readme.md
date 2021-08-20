@@ -31,7 +31,7 @@ This workshop should take from 1 to 2 hours, depending on how deep you want to g
 - [Workshop Steps](#workshop-steps)
   - [Preamble: **clone repository and explore**](#preamble-clone-repository-and-explore)
   - [Step 1: **create consumer**](#step-1---simple-consumer-calling-provider): Create our consumer before the Provider API even exists
-  - [Step 2: **integration problems!**](#step-2---integration problems...): Connecting the client to the product service
+  - [Step 2: **integration problems**](#step-2---integration problems): Connecting the client to the product service
   - [Step 3: **pact test**](#step-3---pact-to-the-rescue): Write a Pact test for our consumer
   - [Step 4: **pact verification**](#step-4---verify-the-provider): Verify the consumer pact with the Provider API
   - [Step 5: **fix consumer**](#step-5---back-to-the-client-we-go): Fix the consumer's bad assumptions about the Provider
