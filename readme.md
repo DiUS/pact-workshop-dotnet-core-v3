@@ -234,6 +234,7 @@ using System.Collections.Generic;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 using Consumer;
+using PactNet.Matchers;
 
 namespace tests
 {
@@ -277,7 +278,7 @@ namespace tests
                 .WillRespond()
                     .WithStatus(HttpStatusCode.OK)
                     .WithHeader("Content-Type", "application/json; charset=utf-8")
-                    .WithJsonBody(products);
+                    .WithJsonBody(new TypeMatcher(products));
 
             await pact.VerifyAsync(async ctx => {
                 var response = await ApiClient.GetAllProducts();
@@ -295,7 +296,7 @@ namespace tests
                 .WillRespond()
                     .WithStatus(HttpStatusCode.OK)
                     .WithHeader("Content-Type", "application/json; charset=utf-8")
-                    .WithJsonBody(products[1]);
+                    .WithJsonBody(new TypeMatcher(products[1]));
 
             await pact.VerifyAsync(async ctx => {
                 var response = await ApiClient.GetProduct(10);
