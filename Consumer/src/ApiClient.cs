@@ -35,7 +35,7 @@ namespace Consumer
             {
                 try
                 {
-                    var response = await client.GetAsync($"/api/products/{id}");
+                    var response = await client.GetAsync($"/api/product/{id}");
                     return response;
                 }
                 catch (Exception ex)

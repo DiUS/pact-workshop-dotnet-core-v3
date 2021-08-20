@@ -24,15 +24,26 @@ namespace tests.Middleware
             _repository = repository;
             _providerStates = new Dictionary<string, Action>
             {
-                { "There is data", AddData }
+                { "products exist", ProductsExist},
+                { "product with ID 10 exists", Product10Exists }
             };
         }
 
-        private void AddData()
+        private void ProductsExist()
         {
             List<Product> products = new List<Product>()
             {
                 new Product(9, "GEM Visa", "CREDIT_CARD", "v2"),
+                new Product(10, "28 Degrees", "CREDIT_CARD", "v1")
+            };
+
+            _repository.SetState(products);
+        }
+
+        private void Product10Exists()
+        {
+            List<Product> products = new List<Product>()
+            {
                 new Product(10, "28 Degrees", "CREDIT_CARD", "v1")
             };
 

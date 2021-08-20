@@ -12,9 +12,8 @@ namespace provider.Repositories
         {
             State = new List<Product>()
             {
-                new Product(1, "GEM Visa", "CREDIT_CARD", "v2"),
-                new Product(2, "28 Degrees", "CREDIT_CARD", "v1"),
-                new Product(3, "Commonwealth Bank Platinum Visa", "CREDIT_CARD", "v1")
+                new Product(9, "GEM Visa", "CREDIT_CARD", "v2"),
+                new Product(10, "28 Degrees", "CREDIT_CARD", "v1")
             };
         }
 
