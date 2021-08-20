@@ -1,6 +1,4 @@
 ﻿using System;
-using System.Net.Http;
-using System.Threading.Tasks;
 
 namespace Consumer
 {
@@ -8,42 +6,17 @@ namespace Consumer
     {
         static void Main(string[] args)
         {
-            string dateTimeToValidate = "05/01/2018";
-            string baseUri = "http://localhost:9000";
+            var ApiClient = new ApiClient(new Uri("http://localhost:9001"));
 
-            if(args.Length <= 1)
-            {
-                Console.WriteLine("-------------------");
-                WriteoutArgsUsed(dateTimeToValidate, baseUri);
-                WriteoutUsageInstructions();
-                Console.WriteLine("-------------------");
-            }
-            else
-            {
-                dateTimeToValidate = args[0];
-                baseUri = args[1];
-                Console.WriteLine("-------------------");
-                WriteoutArgsUsed(dateTimeToValidate, baseUri);
-                Console.WriteLine("-------------------");
-            }
+            Console.WriteLine("**Retrieving product list**");
+            var response = ApiClient.GetAllProducts().GetAwaiter().GetResult();
+            var responseBody = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+            Console.WriteLine($"Response.Code={response.StatusCode}, Response.Body={responseBody}\n\n");
 
-            Console.WriteLine("Validating date...");
-            var result = ConsumerApiClient.ValidateDateTimeUsingProviderApi(dateTimeToValidate, new Uri(baseUri)).GetAwaiter().GetResult();
-            var resultContentText = result.Content.ReadAsStringAsync().GetAwaiter().GetResult();
-            Console.WriteLine(resultContentText);
-            Console.WriteLine("...Date validation complete. Goodbye.");
-        }
-
-        static private void WriteoutArgsUsed(string datetimeArg, string baseUriArg)
-        {
-            Console.WriteLine($"Running consumer with args: dateTimeToValidate = {datetimeArg}, baseUri = {baseUriArg}");
-        }
-
-        static private void WriteoutUsageInstructions()
-        {
-            Console.WriteLine("To use with your own parameters:");
-            Console.WriteLine("Usage: dotnet run [DateTime To Validate] [Provider Api Uri]");
-            Console.WriteLine("Usage Example: dotnet run 01/01/2018 http://localhost:9000");
+            Console.WriteLine("**Retrieving product with id=1**");
+            response = ApiClient.GetProduct(9).GetAwaiter().GetResult();
+            responseBody = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+            Console.WriteLine($"Response.Code={response.StatusCode}, Response.Body={responseBody}");
         }
     }
 }

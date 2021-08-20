@@ -1,25 +1,4 @@
-# Example .NET Core Project for Pact Workshop
-
-- [Prerequisites](#prerequisites)
-- [Workshop Steps](#workshop-steps)
-  - [Step 1 - Fork the Repo & Explore the Code!](#step-1---fork-the-repo--explore-the-code)
-    - [CompletedSolution](#completedsolution)
-    - [YourSolution](#yoursolution)
-  - [Step 2 - Understanding The Consumer Project](#step-2---understanding-the-consumer-project)
-    - [Step 2.1 - Start the Provider API Locally](#step-21---start-the-provider-api-locally)
-    - [Step 2.2 - Execute the Consumer](#step-22---execute-the-consumer)
-  - [Step 3 - Testing the Consumer Project with Pact](#step-3---testing-the-consumer-project-with-pact)
-    - [Step 3.1 - Creating a Test Project for Consumer with XUnit](#step-31---creating-a-test-project-for-consumer-with-xunit)
-    - [Step 3.2 - Configuring the Mock HTTP Pact Server on the Consumer](#step-32---configuring-the-mock-http-pact-server-on-the-consumer)
-    - [Step 3.3 - Creating Your First Pact Test for the Consumer Client](#step-33---creating-your-first-pact-test-for-the-consumer-client)
-  - [Step 4 - Testing the Provider Project with Pact](#step-4---testing-the-provider-project-with-pact)
-    - [Step 4.1 - Managing Provider State](#step-41---managing-provider-state)
-    - [Step 4.2 - Creating the Provider API Pact Test](#step-42---creating-the-provider-api-pact-test)
-    - [Step 4.2.1 - Creating the XUnitOutput Class](#step-421---creating-the-xunitoutput-class)
-    - [Step 4.3 - Running Your Provider API Pact Test](#step-43---running-your-provider-api-pact-test)
-    - [Step 4.3.1 - Start Your Provider API Locally](#step-431---start-your-provider-api-locally)
-    - [Step 4.3.2 - Run your Provider API Pact Test](#step-432---run-your-provider-api-pact-test)
-  - [Step 5 - Missing Consumer Pact Test Cases](#step-5---missing-consumer-pact-test-cases)
+# Pact .NET Core Workshop
 
 When writing a lot of small services, testing the interactions between these becomes a major headache.
 That's the problem Pact is trying to solve.
@@ -38,6 +17,28 @@ used in the consumer's specs to provide a mock producer and is also played back 
 does provide the response that the consumer expects.
 
 This allows you to test both sides of an integration point using fast unit tests.
+
+## Introduction
+
+This workshop is aimed at demonstrating core features and benefits of contract testing with Pact.
+
+Whilst contract testing can be applied retrospectively to systems, we will follow the [consumer driven contracts](https://martinfowler.com/articles/consumerDrivenContracts.html) approach in this workshop - where a new consumer and provider are created in parallel to evolve a service over time, especially where there is some uncertainty with what is to be built.
+
+This workshop should take from 1 to 2 hours, depending on how deep you want to go into each topic.
+
+**Workshop outline**:
+- [Prerequisites](#prerequisites)
+- [Workshop Steps](#workshop-steps)
+  - [Preamble: **clone repository and explore**](#preamble---clone-repository-and-explore)
+  - [Step 1: **create consumer**](#step-1---simple-consumer-calling-provider): Create our consumer before the Provider API even exists
+  - [Step 2: **integration problems!**](#step-2---integration problems!): Connecting the client to the product service
+  - [Step 3: **pact test**](#step-3---pact-to-the-rescue): Write a Pact test for our consumer
+  - [Step 4: **pact verification**](#step-4---verify-the-provider): Verify the consumer pact with the Provider API
+  - [Step 5: **fix consumer**](#step-5---back-to-the-client-we-go): Fix the consumer's bad assumptions about the Provider
+
+## Learning objectives
+
+If running this as a team workshop format, you may want to take a look through the [learning objectives](./LEARNING.md).
 
 # Prerequisites
 
@@ -62,157 +63,203 @@ package you'll need to tick the `Include prereleases` checkbox since the librari
 
 # Workshop Steps
 
-## Step 1 - Fork the Repo & Explore the Code!
+## Preamble: Clone repository and explore
 
-Create a fork of [pact-workshop-dotnet-core-v2](https://github.com/dius/pact-workshop-dotnet-core-v2) and familiarise yourself with
-its contents. There are two main folders to be aware of:
+Clone [pact-workshop-dotnet-core-v3](https://github.com/dius/pact-workshop-dotnet-core-v3) and familiarise yourself with
+its contents. There are two components in scope for our workshop.
 
-### CompletedSolution
+1. Product client. A command line client that queries the Product service for product information.
+1. Product Service (Provider). Provides useful things about products, such as listing all products and getting the details of an individual product.
 
-This folder contains a complete sample solution for the workshop so if you get stuck at any point or are unsure what to do next take a look
-in here and you will see all the completed code for guidance.
+The two components can be found in their respective folders and each have a solution (`.sln`) file and project files for the app and test projects (`.csproj`)
 
-Within the folder is a Consumer project in the **Consumer/src** folder which is a simple .NET Core console application that connects to the
-Provider project which is in the **Provider/src** folder and is an ASP.NET Core Web API. Both projects also have a **tests/** folder which
+### Consumer
+
+A consumer project in the **Consumer/src** folder which is a simple .NET Core console application that connects to the
+Provider project
+
+### Provider
+
+A provider in the **Provider/src** folder and is an ASP.NET Core Web API. Both projects also have a **tests/** folder which
 is where the [Pact](https://docs.pact.io/) tests for both projects exist.
 
-### YourSolution
+## Step 1: Simple consumer calling provider
 
-This folder follows the same structure as the *CompletedSolution/* folder except for the *tests/* folders are empty! During this workshop you
-will be creating the test projects using [Pact](https://docs.pact.io/) to test both the *Consumer* project and the *Provider* project.
+We need to first create an HTTP client to make the calls to our provider service:
 
-## Step 2 - Understanding The Consumer Project
+![Simple Consumer](diagrams/workshop_step1.svg)
 
-The *Consumer* is a .NET Core console application which validates date & time strings by making requests to our *Provider* API. Take a look
-at the code. You might notice before we can run the project successfully we need the Provider API running locally.
+The Consumer has implemented the product service client which has the following:
 
-### Step 2.1 - Start the Provider API Locally
+- `GET /products` - Retrieve all products
+- `GET /products/{id}` - Retrieve a single product by ID
 
-Using the command line navigate to:
+The diagram below highlights the interaction for retrieving a product with ID 10:
 
-```
-[RepositoryRoot]/YourSolution/Provider/src/
-```
+![Sequence Diagram](diagrams/workshop_step1_class-sequence-diagram.svg)
 
-Once in the Provider */src/* directory first do a ```dotnet restore``` at the command line to pull down the dependencies required for the project.
-Once that has completed run ```dotnet run``` this will start your the Provider API. Now check that everything is working O.K. by navigating to
-the URL below in your browser:
-
-```
-http://localhost:9000/api/provider?validDateTime=05/01/2018
-```
-
-If your request is successful you should see in your browser:
-
-```
-{"test":"NO","validDateTime":"05-01-2018 00:00:00"}
-```
-
-If you see the above leave the Provider API running then you are ready to try out the consumer.
-
-#### NB: Potential Error
-
-If you get a **404** error check that the path ```[RepositoryRoot]/YourSolution/data``` exists with a text file in it called **somedata.txt** in it. We will
-talk about this file later on.
-
-### Step 2.2 - Execute the Consumer
-
-With the Provider API running open another command line instance and navigate to:
-
-```
-[RepositoryRoot]/YourSolution/Consumer/src/
-```
-
-Once in the directory run another ```dotnet restore``` to pull down the dependencies for the Consumer project. Once this is completed at the command line
-type in ```dotnet run``` you should see output:
-
-```
-MyPc:src thomas.shipley$ dotnet run
--------------------
-Running consumer with args: dateTimeToValidate = 05/01/2018, baseUri = http://localhost:9000
-To use with your own parameters:
-Usage: dotnet run [DateTime To Validate] [Provider Api Uri]
-Usage Example: dotnet run 01/01/2018 http://localhost:9000
--------------------
-Validating date...
-{"test":"NO","validDateTime":"05-01-2018 00:00:00"}
-...Date validation complete. Goodbye.
-```
-
-If you see output similar to above in your command line then the consumer is now running successfully! If you want to now you can experiment with passing in
-parameters different to the defaults.
-
-## Step 3 - Testing the Consumer Project with Pact
-
-Now we have tested the Provider API and Consumer run successfully on your machine we can start to create our Pact tests. Pact files are **Consumer Driven**
-that is to say, they work by the *Consumer* defining in there Pact tests first what they expect from a provider which can be verified by the *Provider*.
-So let's follow this convention and create our *Consumer* tests first.
-
-There is a Visual Studio solution file available for your convience, but it will not load until you've gone through the next step because it assumes that
-there is a ```tests.csproj``` project file available. The next step will create this file.
-
-### Step 3.1 - Creating a Test Project for Consumer with XUnit
-
-Pact cannot execute tests on its own it needs a test runner project. For this workshop, we will be using [XUnit](https://xunit.github.io/) to create the project
-navigate to ```[RepositoryRoot]/YourSolution/Consumer/tests``` and run:
-
-```
-dotnet new xunit
-```
-
-This will create an empty XUnit project with all the references you need... expect Pact. Depending on what OS you are completing this workshop on you will need
-to run one of the following commands:
-
-```
-dotnet add package PactNet --version 4.0.0-beta
-dotnet add package PactNet.Native --version 0.1.0-beta
-```
-
-Finally you will need to add a reference to the Consumer Client project src code. So again
-at the same command line type and run the command:
-
-```
-dotnet add reference ../src/consumer.csproj
-```
-
-This will allow you to access public code from the Consumer Client project which you will
-need to do to test the code!
-
-Once this command runs successfully you will have in ```[RepositoryRoot]/YourSolution/Consumer/tests``` an empty .NET Core XUnit Project with Pact
-and we can begin to setup Pact!
-
-### Step 3.2 - Configuring the Mock HTTP Pact Server on the Consumer
-
-Pact works by placing a mock HTTP server between the consumer and provider(s) in an application to handle mocked provider interactions on the consumer
-side and replay this actions on the provider side to verify them. With previous versions of PactNet this was something we had to set up ourselves but
-with version 4.0.0 it's integrated into the library so no additional setup is ncessary.
-
-### Step 3.3 - Creating Your First Pact Test for the Consumer Client
-
-Update the test class added by the ```dotnet new xunit``` command to be named ```ConsumerPactTests``` and update the file name to match. 
-With that done update the constructor to initialise the Pact
+You can see the client interface we created in `Consumer/src/ApiClient.cs`:
 
 ```csharp
 using System;
-using System.IO;
-using System.Net;
 using System.Net.Http;
-using Xunit;
-using Consumer;
+using System.Threading.Tasks;
+
+namespace Consumer
+{
+    public class ApiClient
+    {
+        private readonly Uri BaseUri;
+
+        public ApiClient(Uri baseUri)
+        {
+            this.BaseUri = baseUri;
+        }
+
+        public async Task<HttpResponseMessage> GetAllProducts()
+        {
+            using (var client = new HttpClient { BaseAddress = BaseUri })
+            {
+                try
+                {
+                    var response = await client.GetAsync($"/api/products");
+                    return response;
+                }
+                catch (Exception ex)
+                {
+                    throw new Exception("There was a problem connecting to Products API.", ex);
+                }
+            }
+        }
+
+        public async Task<HttpResponseMessage> GetProduct(int id)
+        {
+            using (var client = new HttpClient { BaseAddress = BaseUri })
+            {
+                try
+                {
+                    var response = await client.GetAsync($"/api/products/{id}");
+                    return response;
+                }
+                catch (Exception ex)
+                {
+                    throw new Exception("There was a problem connecting to Products API.", ex);
+                }
+            }
+        }
+    }
+}
+```
+
+After forking or cloning the repository, we may want to install the dependencies:
+
+1. `cd Consumer\src`
+2. `dotnet restore`
+
+We can run the client with `dotnet run` - it should fail with the error below, because the Provider is not running.
+
+![Failed step1 page](diagrams/workshop_step1_failed.png)
+
+# Step 2 - Integration problems!
+
+our provider team has started building out their API in parallel. Let's run our website against our provider (you'll need two terminals to do this):
+
+
+```console
+# Terminal 1
+erikdanielsen@Erik’s MacBook Pro:~/work/dius/pact-workshop-dotnet-core-v3/Provider/src (branch: master!)
+$ dotnet run
+Hosting environment: Development
+Content root path: /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/src
+Now listening on: http://localhost:9001
+Application started. Press Ctrl+C to shut down.
+```
+
+```console
+# Terminal 2
+erikdanielsen@Erik’s MacBook Pro:~/work/dius/pact-workshop-dotnet-core-v3/Consumer/src (branch: master!)
+$ dotnet run
+**Retrieving product list**
+Response.Code=OK, Response.Body=[
+  {
+    "id": 1,
+    "name": "GEM Visa",
+    "type": "CREDIT_CARD",
+    "version": "v2"
+  },
+  {
+    "id": 2,
+    "name": "28 Degrees",
+    "type": "CREDIT_CARD",
+    "version": "v1"
+  },
+  {
+    "id": 3,
+    "name": "Commonwealth Bank Platinum Visa",
+    "type": "CREDIT_CARD",
+    "version": "v1"
+  }
+]
+
+
+**Retrieving product with id=1**
+Response.Code=NotFound, Response.Body=
+
+```
+
+So we're able to retrieve a list of products but not a specific product even though one exists with id=1. We're getting a *404* response every time we attempt to access an individual product.
+
+We need to have a conversation about what the endpoint should be!
+
+## Step 3 - Pact to the rescue
+
+Unit tests are written and executed in isolation of any other services. When we write tests for code that talk to other services, they are built on trust that the contracts are upheld. There is no way to validate that the consumer and provider can communicate correctly.
+
+> An integration contract test is a test at the boundary of an external service verifying that it meets the contract expected by a consuming service — [Martin Fowler](https://martinfowler.com/bliki/IntegrationContractTest.html)
+
+Adding contract tests via Pact would have highlighted the `/product/{id}` endpoint was incorrect.
+
+Let us add Pact to the project and write a consumer pact test for the `GET /product/{id}` endpoint.
+
+*Provider states* is an important concept of Pact that we need to introduce. These states help define the state that the provider should be in for specific interactions. For the moment, we will initially be testing the following states:
+
+- `product with ID 10 exists`
+- `products exist`
+
+The consumer can define the state of an interaction using the `given` property.
+
+Note how similar it looks to a unit test:
+
+```csharp
+using System.IO;
 using PactNet;
 using PactNet.Native;
 using Xunit.Abstractions;
-using Newtonsoft.Json.Serialization;
+using Xunit;
+using System.Net.Http;
+using System.Net;
+using System.Collections.Generic;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Serialization;
+using Consumer;
 
 namespace tests
 {
-    public class ConsumerPactTests
+    public class ApiTest
     {
         private IPactBuilderV3 pact;
+        private readonly ApiClient ApiClient;
+        private readonly int port = 9000;
+        private readonly List<object> products;
 
-        public ConsumerPactTests(ITestOutputHelper output)
+        public ApiTest(ITestOutputHelper output)
         {
+            products = new List<object>()
+            {
+                new { id = 9, type = "CREDIT_CARD", name = "GEM Visa", version = "v2" },
+                new { id = 10, type = "CREDIT_CARD", name = "28 Degrees", version = "v1" }
+            };
+
             var Config = new PactConfig
             {
                 PactDir = Path.Join("..", "..", "..", "..", "..", "pacts"),
@@ -224,589 +271,80 @@ namespace tests
                 }
             };
 
-            pact = Pact.V3("Consumer", "Provider", Config).UsingNativeBackend();
+            pact = Pact.V3("ApiClient", "ProductService", Config).UsingNativeBackend(port);
+            ApiClient = new ApiClient(new System.Uri($"http://localhost:{port}"));
+        }
+
+        [Fact]
+        public async void GetAllProducts()
+        {
+            // Arange
+            pact.UponReceiving("A valid request for all products")
+                    .Given("There is data")
+                    .WithRequest(HttpMethod.Get, "/api/products")
+                .WillRespond()
+                    .WithStatus(HttpStatusCode.OK)
+                    .WithHeader("Content-Type", "application/json; charset=utf-8")
+                    .WithJsonBody(products);
+
+            await pact.VerifyAsync(async ctx => {
+                var response = await ApiClient.GetAllProducts();
+                Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            });
+        }
+
+        [Fact]
+        public async void GetProduct()
+        {
+            // Arange
+            pact.UponReceiving("A valid request for a product")
+                    .Given("There is data")
+                    .WithRequest(HttpMethod.Get, "/api/product/10")
+                .WillRespond()
+                    .WithStatus(HttpStatusCode.OK)
+                    .WithHeader("Content-Type", "application/json; charset=utf-8")
+                    .WithJsonBody(products[1]);
+
+            await pact.VerifyAsync(async ctx => {
+                var response = await ApiClient.GetProduct(10);
+                Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            });
         }
     }
-}
-```
-
-The constructor is doing a couple of things right now:
-
-  * It creates a PactConfig object which allows us to specify:
-    * The Pact files will be generated and overwritten too ([RepositoryRoot]/pacts).
-    * The Pact Log files will be written to the executing directory.
-
-  * Creates a `Pact` object that follows the Pact Specification v3
-    * Define the name of our Consumer project (Consumer) which will be used in other Pact Test projects.
-    * Define the relationships our Consumer project has with others. In this case, just one called "Provider" this name will map to the same name used in the Provider Project Pact tests.
-    * Tells Pact to use the Rust based backend to run the tests `UsingNativeBackend()`
-
-All the Pact tests added during this workshop will follow the same three steps:
-
-1. Mock out an interaction with the Provider API.
-2. Interact with the mocked out interaction using our Consumer code.
-3. Assert the result is what we expected.
-
-There will a compilation error related to the ```XUnitOutput``` class which is still missing, we'll add that next
-
-#### Step 3.3.1 - Add XUnitOutput class to capture standard out from Rust process
-
-Unfortunately XUnit does not capture output from standard out by default so we need to add this
-manually. Create a new class file named ```XUnitOutput``` with the following content:
-
-```csharp
-using System;
-using PactNet.Infrastructure.Outputters;
-using Xunit.Abstractions;
-
-namespace tests
-{
-    public class XUnitOutput : IOutput
-    {
-        private readonly ITestOutputHelper _output;
-
-        public XUnitOutput(ITestOutputHelper output)
-        {
-            _output = output;
-        }
-
-        public void WriteLine(string line)
-        {
-            _output.WriteLine(line);
-        }
-    }
-}
-```
-
-This should fix the compilation issue with ```ConsumerPactTest```
-
-#### Step 3.3.2 - Mocking an Interaction with the Provider
-
-For the first test, we shall check that if we pass an invalid date string to our Consumer
-that the Provider API will return a ```400``` response and a message explaining why the
-request is invalid.
-
-Create a test in ```ConsumerPactTests``` called ```ItHandlesInvalidDateParam()``` and
-using the code below mock out our HTTP request to the Provider API which will return a
-```400```:
-
-```csharp
-[Fact]
-public async void ItHandlesInvalidDateParam()
-{
-    // Arange
-    var invalidRequestMessage = "validDateTime is not a date or time";
-    pact.UponReceiving("A invalid GET request for Date Validation with invalid date parameter")
-            .Given("There is data")
-            .WithRequest(HttpMethod.Get, "/api/provider")
-            .WithQuery("validDateTime", "lolz")
-        .WillRespond()
-            .WithStatus(HttpStatusCode.BadRequest)
-            .WithHeader("Content-Type", "application/json; charset=utf-8")
-            .WithJsonBody(new { message = invalidRequestMessage });
-}
-```
-
-The code above uses the ```pact``` to setup our mocked response.
-Breaking it down by the different method calls:
-
-* ```UponReceiving("")```
-
-When this method executes it will add a description of what the mocked HTTP request
-represents to the Pact file. It is important to be accurate here as this message is what
-will be shown when a test fails to help a developer understand what went wrong.
-
-* ```Given("")```
-
-This workshop will talk more about the Given method when writing the Provider API Pact test
-but for now, it is important to know that the Given method manages the state that your test
-requires to be in place before running. In our example, we require the Provider API to
-have some data. The Provider API Pact test will parse these given statements and map
-them to methods which will execute code to setup the required state(s).
-
-* ```WithRequest(HttpMethod.Get, "/api/provider")```
-
-Here is where the configuration for your mocked HTTP request is added. In our example
-we have added what *Method* the request is (Get) the *Path* the request is made to  (/api/provider/)
-
-* ```WithQuery("validDateTime", "lolz")```
-
-The query parameters passed to the endpoint as key value pairs
-
-* ```WillRespond()```
-
-Used to indicate that the start of the response back from the Provider API
-
-* WithStatus(HttpStatusCode.BadRequest)
-
-The response will have an HTTP status code of ```400```
-
-* With JsonBody(new { message = invalidRequestMessage })
-
-Defines the body of the response message
-
-All the methods above on running the test will generate a *Pact file* which will be used
-by the Provider API to make the same requests against the actual API to ensure the responses
-match the expectations of the Consumer.
-
-#### Step 3.3.3 - Completing Your First Consumer Test
-
-With the mocked response setup the rest of the test can be treated like any other test
-you would write; perform an action and assert the result:
-
-```csharp
-[Fact]
-public async void ItHandlesInvalidDateParam()
-{
-    // Arange
-    var invalidRequestMessage = "validDateTime is not a date or time";
-    pact.UponReceiving("A invalid GET request for Date Validation with invalid date parameter")
-            .Given("There is data")
-            .WithRequest(HttpMethod.Get, "/api/provider")
-            .WithQuery("validDateTime", "lolz")
-        .WillRespond()
-            .WithStatus(HttpStatusCode.BadRequest)
-            .WithHeader("Content-Type", "application/json; charset=utf-8")
-            .WithJsonBody(new { message = invalidRequestMessage });
-
-    // Act & Assert
-    await pact.VerifyAsync(async ctx => {
-        var response = await ConsumerApiClient.ValidateDateTimeUsingProviderApi("lolz", ctx.MockServerUri);
-        var body = await response.Content.ReadAsStringAsync();
-        Assert.Contains(invalidRequestMessage, body);
-    });
-
-}
-```
-
-With the updated test above it will make a request using our Consumer client and get the
-mocked interaction back which we assert on to confirm the error message is the one we
-expect.
-
-Now all that is left to do is run your test. From the
-```[RepositoryRoot]/YourSolution/Consumer/tests/``` directory run the ```dotnet test```
-command at the command line. If successful you should see some output like this:
 
 ```
+
+![Test using Pact](diagrams/workshop_step3_pact.svg)
+
+This test starts a mock server on a specificed port (9000 here) that acts as our provider service.
+
+Running this test still passes, but it creates a pact file which we can use to validate our assumptions on the provider side, and have conversation around.
+
+```console
 $ dotnet test
   Determining projects to restore...
-  Restored /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v2/YourSolution/Consumer/src/consumer.csproj (in 80 ms).
-  Restored /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v2/YourSolution/Consumer/tests/tests.csproj (in 460 ms).
-  consumer -> /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v2/YourSolution/Consumer/src/bin/Debug/netcoreapp3.1/consumer.dll
-  tests -> /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v2/YourSolution/Consumer/tests/bin/Debug/netcoreapp3.1/tests.dll
-Test run for /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v2/YourSolution/Consumer/tests/bin/Debug/netcoreapp3.1/tests.dll (.NETCoreApp,Version=v3.1)
+  All projects are up-to-date for restore.
+  consumer -> /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Consumer/src/bin/Debug/netcoreapp3.1/consumer.dll
+  tests -> /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Consumer/tests/bin/Debug/netcoreapp3.1/tests.dll
+Test run for /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Consumer/tests/bin/Debug/netcoreapp3.1/tests.dll (.NETCoreApp,Version=v3.1)
 Microsoft (R) Test Execution Command Line Tool Version 16.11.0
 Copyright (c) Microsoft Corporation.  All rights reserved.
 
 Starting test execution, please wait...
 A total of 1 test files matched the specified pattern.
+
+Passed!  - Failed:     0, Passed:     2, Skipped:     0, Total:     2, Duration: 12 ms - /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Consumer/tests/bin/Debug/netcoreapp3.1/tests.dll (netcoreapp3.1)
 ```
 
-If you now navigate to ```[RepositoryRoot]/pacts``` you will see the pact file your test
-generated. Take a moment to have a look at what it contains which is a JSON representation
-of the mocked our requests your test made.
+A pact file should have been generated in *pacts/ApiClient-ProductService.json*
 
-With your Consumer Pact Test passing and your new Pact file we can now create the Provider
-Pact test which will validate your mocked responses match actual responses from the
-Provider API.
+*NOTE*: even if the API client had been graciously provided for us by our Provider Team, it doesn't mean that we shouldn't write contract tests - because the version of the client we have may not always be in sync with the deployed API - and also because we will write tests on the output appropriate to our specific needs.
 
-## Step 4 - Testing the Provider Project with Pact
+## Step 4 - Verify the provider
 
-There is a Visual Studio solution file available for your convience, but it will not load until 
-you've gone through this step because it assumes that there is a ```tests.csproj``` project file 
-available.
+Now let's make a start on writing Pact tests to validate the consumer contract:
 
-Navigate to the ```[RepositoryRoot]/YourSolution/Provider/tests``` directory in your
-command line and create another new XUnit project by running the command
-```dotnet new xunit```. Unfortunately this creates a test project that targets the wrong sdk.
-To fix this, edit ```tests.csproj``` and update
-
-```
-<Project Sdk="Microsoft.NET.Sdk">
-```
-
-to
-
-```
-<Project Sdk="Microsoft.NET.Sdk.Web">
-```
-
-otherwise everything will build find and seem perfectly fine until you run your tests and they
-fail for no apparent reason. What seems to happen is that endpoints added by controllers are
-not loaded properly so all test executions result in HTTP 404 responses.
-
-You will also need to add the correct version of the PactNet package using one of the command line 
-commands below:
-
-```
-dotnet add package PactNet --version 4.0.0-beta
-dotnet add package PactNet.Native --version 0.1.0-beta
-```
-
-Finally you will need to add a reference to the Provider project src code. 
-So again at the same command line type and run the command:
-
-```
-dotnet add reference ../src/provider.csproj
-```
-
-With all the packages added to our Provider API test project, we are ready to move onto
-the next step; hooking into the application so we can manage test environment state.
-
-### Step 4.1 - Managing Provider State
-
-The Pact tests for the Provider API will need to do two things:
-
-1. Manage the state of the Provider API as dictated by the Pact file.
-2. Communicate with the Provider API to verify that the real responses for HTTP requests
-defined in the Pact file match the mocked ones.
-
-For the first point, we need to create an HTTP API used exclusively by our tests to manage
-the transitions in the state. The first step is to inject a simple api endpoint into your
-application.
-
-#### Step 4.1.1 - Injecting API endpoint to Manage Provider State
-
-First, navigate to your new Provider Tests project
-(```[RepositoryRoot]/YourSolution/Provider/tests/```) and create a file and corresponding
-class called ```TestStartup.cs```. In which we will proxy the application Startup to inject
-middleware:
-
-``` csharp
-using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using tests.Middleware;
-using Microsoft.AspNetCore.Hosting;
-using Provider;
-
-namespace tests
-{
-    public class TestStartup
-    {
-        private Startup _proxy;
-
-        public TestStartup(IConfiguration configuration)
-        {
-            _proxy = new Startup(configuration);
-        }
-
-        // This method gets called by the runtime. Use this method to add services to the container.
-        public void ConfigureServices(IServiceCollection services)
-        {
-            _proxy.ConfigureServices(services);
-        }
-
-        // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
-        public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
-        {
-            app.UseMiddleware<ProviderStateMiddleware>();
-            _proxy.Configure(app, env);
-        }
-    }
-}
-```
-
-When you created the class above you might have noticed that the compiler has found a
-compilation error because we haven't created the ProviderStateMiddleware class yet.
-
-#### Step 4.1.2 - Creating a Provider State Middleware
-
-When creating a Pact test for a Provider your test needs its own API. The reason for
-this is so it can manage the state of your API based on what the Pact file needs for each
-request. This might be actions like ensuring a user is in the database or a user has
-permission to access a resource.
-
-Above we took the first step to create this API for our tests to access but currently
-it both doesn't compile and even if we removed the ```app.UseMiddleware``` line it 
-wouldn't do anything. We need to create a way for the API to manage the states required
-by our tests. We will do this by creating a piece of middleware (similar to a controller)
-that handles requests to the path ```/provider-states/```.
-
-##### Step 4.1.2.1 - Creating the ProviderState Class
-
-First create a new folder at ```[RepositoryRoot]/YourSolution/Provider/tests/Middleware```
-and create a file and corresponding class called ```ProviderState.cs``` and add the
-following code:
-
-```csharp
-namespace tests.Middleware
-{
-    public class ProviderState
-    {
-        public string Consumer { get; set; }
-        public string State { get; set; }
-    }
-}
-```
-
-This is a simple class which represents the data sent to the ```/provider-states/``` path.
-The first property will store the name of *Consumer* who is requesting the state change.
-Which in our case is **Consumer**. The second property stores the state we want the
-Provider API to be in.
-
-With this class in place, we can create the middleware class.
-
-##### Step 4.1.2.2 - Creating the ProviderStateMiddleware Class
-
-Again at ```[RepositoryRoot]/YourSolution/Provider/tests/Middleware``` create a file and corresponding class called ```ProviderStateMiddleware.cs```. For now add the following code:
-
-```csharp
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Net;
-using System.Text;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http;
-using Newtonsoft.Json;
-
-namespace tests.Middleware
-{
-    public class ProviderStateMiddleware
-    {
-        private readonly RequestDelegate _next;
-        private readonly IDictionary<string, Action> _providerStates;
-
-        public ProviderStateMiddleware(RequestDelegate next)
-        {
-            _next = next;
-        }
-
-        public async Task Invoke(HttpContext context)
-        {
-            if (context.Request.Path.StartsWithSegments("/provider-states/"))
-            {
-                await this.HandleProviderStatesRequest(context);
-                await context.Response.WriteAsync(String.Empty);
-            }
-            else
-            {
-                await this._next(context);
-            }
-        }
-
-        private async Task HandleProviderStatesRequest(HttpContext context)
-        {
-            context.Response.StatusCode = (int)HttpStatusCode.OK;
-
-            if (context.Request.Method.ToUpper() == HttpMethod.Post.ToString().ToUpper() &&
-                context.Request.Body != null)
-            {
-                string jsonRequestBody = String.Empty;
-                using (var reader = new StreamReader(context.Request.Body, Encoding.UTF8))
-                {
-                    jsonRequestBody = await reader.ReadToEndAsync();
-                }
-
-                var providerState = JsonConvert.DeserializeObject<ProviderState>(jsonRequestBody);
-
-                //A null or empty provider state key must be handled
-                if (providerState != null && !String.IsNullOrEmpty(providerState.State))
-                {
-                    _providerStates[providerState.State].Invoke();
-                }
-            }
-        }
-    }
-}
-```
-
-The code above gives us a way to handle requests to the ```/provider-states/``` path and
-based on the ```ProviderState.State``` requested run some associated code but in the code
-above the ```_providerStates``` is empty so let's update the constructor to set up two states
-and the associated code. The states to be added are:
-
-1. "There is data"
-
-This state will create a text file called ```somedata.txt``` in your operation system's temporary
-directory. We used this directory because we experienced some inconsistencies between different
-operation systems when using relative paths.
-
-2. "There is no data"
-
-This state will delete the text file ```somedata.txt``` from your operating system's temporary
-directory if it exists. This state is not currently used by our Consumer Pact test but could be 
-if some more test cases were added ;).
-
-The code for this looks like:
-
-```csharp
-public class ProviderStateMiddleware
-{
-        private readonly RequestDelegate _next;
-        private readonly IDictionary<string, Action> _providerStates;
-
-        public ProviderStateMiddleware(RequestDelegate next)
-        {
-            _next = next;
-            _providerStates = new Dictionary<string, Action>
-            {
-                { "There is no data", RemoveAllData },
-                { "There is data", AddData }
-            };
-        }
-
-        private void RemoveAllData()
-        {
-            var deletePath = Path.Combine(DataPath(), "somedata.txt");
-
-            if (File.Exists(deletePath))
-            {
-                File.Delete(deletePath);
-            }
-        }
-
-        private void AddData()
-        {
-            var writePath = Path.Combine(DataPath(), "somedata.txt");
-
-            if (!Directory.Exists(DataPath()))
-            {
-                Directory.CreateDirectory(DataPath());
-            }
-
-            if (!File.Exists(writePath))
-            {
-                File.Create(writePath);
-            }
-        }
-
-        private string DataPath()
-        {
-            return Path.Join("..", "..", "data");
-        }
-```
-
-Now we have initialised our ```_providerStates``` field with the two states which map to
-```AddData()``` and ```RemoveAllData()``` respectively. Now if our Consumer Pact test
-contains the step:
-
-```csharp
-    _mockProviderService.Given("There is data");
-```
-
-When setting up a mock request our Provider API Pact test will map this to the
-```AddData()``` method and create the ```somedata.txt``` file if it does not already exist.
-If the mock defines the Given step as:
-
-```csharp
-    _mockProviderService.Given("There is no data");
-```
-
-Then the ```RemoveAllData()``` method will be called and if the ```somedata.txt``` file
-exists it will be deleted.
-
-With this code in place the ```ProviderStateMiddleware``` class should be completed and
-look like:
-
-```csharp
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Net;
-using System.Text;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http;
-using Newtonsoft.Json;
-
-namespace tests.Middleware
-{
-    public class ProviderStateMiddleware
-    {
-        private const string ConsumerName = "Consumer";
-        private readonly RequestDelegate _next;
-        private readonly IDictionary<string, Action> _providerStates;
-
-        public ProviderStateMiddleware(RequestDelegate next)
-        {
-            _next = next;
-            _providerStates = new Dictionary<string, Action>
-            {
-                { "There is no data", RemoveAllData },
-                { "There is data", AddData }
-            };
-        }
-
-        private void RemoveAllData()
-        {
-            var deletePath = Path.Combine(DataPath(), "somedata.txt");
-
-            if (File.Exists(deletePath))
-            {
-                File.Delete(deletePath);
-            }
-        }
-
-        private void AddData()
-        {
-            var writePath = Path.Combine(DataPath(), "somedata.txt");
-
-            if (!Directory.Exists(DataPath()))
-            {
-                Directory.CreateDirectory(DataPath());
-            }
-
-            if (!File.Exists(writePath))
-            {
-                File.Create(writePath);
-            }
-        }
-
-        private string DataPath()
-        {
-            return Path.Combine(Path.GetTempPath(), "data");
-        }
-
-        public async Task Invoke(HttpContext context)
-        {
-            if (context.Request.Path.StartsWithSegments("/provider-states"))
-            {
-                await this.HandleProviderStatesRequestAsync(context);
-                await context.Response.WriteAsync(String.Empty);
-            }
-            else
-            {
-                await this._next(context);
-            }
-        }
-
-        private async Task HandleProviderStatesRequestAsync(HttpContext context)
-        {
-            context.Response.StatusCode = (int)HttpStatusCode.OK;
-
-            if (context.Request.Method.ToUpper() == HttpMethod.Post.ToString().ToUpper() &&
-                context.Request.Body != null)
-            {
-                string jsonRequestBody = String.Empty;
-                using (var reader = new StreamReader(context.Request.Body, Encoding.UTF8))
-                {
-                    jsonRequestBody = await reader.ReadToEndAsync();
-                }
-
-                var providerState = JsonConvert.DeserializeObject<ProviderState>(jsonRequestBody);
-
-                //A null or empty provider state key must be handled
-                if (providerState != null && !String.IsNullOrEmpty(providerState.State))
-                {
-                    _providerStates[providerState.State].Invoke();
-                }
-            }
-        }
-    }
-}
-```
-
-#### Step 4.1.2 - Create the test runner
-
-We only need one test class which will be used to verify all test scenarios specified
-in a single pact file. If an API (provider) has multiple pact files (e.g. because of multiple
-consumers), you'll end up with one test class for each pact file.
-
-Rename the auto generated test file ```UnitTest1.cs``` to ```ProviderApiTests``` and add the
-following content:
+In `provider/test/`:
 
 ```csharp
 using System;
@@ -823,177 +361,247 @@ using Xunit.Abstractions;
 
 namespace tests
 {
-    public class ProviderApiTests
+    public class ProductTest
     {
         private string _pactServiceUri = "http://127.0.0.1:9001";
         private ITestOutputHelper _outputHelper { get; }
 
-        public ProviderApiTests(ITestOutputHelper output)
+        public ProductTest(ITestOutputHelper output)
         {
-            _outputHelper = output;
+            if (context.Request.Path.StartsWithSegments("/provider-states/"))
+            {
+                await this.HandleProviderStatesRequest(context);
+                await context.Response.WriteAsync(String.Empty);
+            }
+            else
+            {
+                await this._next(context);
+            }
         }
 
         [Fact]
         public void EnsureProviderApiHonoursPactWithConsumer()
         {
-        }
-    }
-}
-```
-
-The test constructor has an instance of ```ITestOutputHelper``` injected in order to capture
-console output to standard out, unfortunately XUnit does not do this by default.
-
-#### Step 4.1.3 - Configure custom XUnit output
-
-Create the folder ```[RepositoryRoot]/YourSolution/Provider/tests/XUnitHelpers``` and inside create the file 
-```XUnitOutput.cs``` and the corresponding class which should look like:
-
-```csharp
-using PactNet.Infrastructure.Outputters;
-using Xunit.Abstractions;
-
-namespace tests.XUnitHelpers
-{
-    public class XUnitOutput : IOutput
-    {
-        private readonly ITestOutputHelper _output;
-
-        public XUnitOutput(ITestOutputHelper output)
-        {
-            _output = output;
-        }
-
-        public void WriteLine(string line)
-        {
-            _output.WriteLine(line);
-        }
-    }
-}
-```
-
-### Step 4.2 - Creating the Provider API Pact Test
-
-With our Provider States API in place and managed by our test when it is run we can
-complete our test. Update the ```EnsureProviderApiHonoursPactWithConsumer()``` test
-to:
-
-```csharp
-[Fact]
-public void EnsureProviderApiHonoursPactWithConsumer()
-{
-    // Arrange
-    var config = new PactVerifierConfig
-    {
-        // NOTE: We default to using a ConsoleOutput, however xUnit 2 does not capture the console output,
-        // so a custom outputter is required.
-        Outputters = new List<IOutput>
+            // Arrange
+            var config = new PactVerifierConfig
             {
-                new XUnitOutput(_outputHelper)
+                // NOTE: We default to using a ConsoleOutput, however xUnit 2 does not capture the console output,
+                // so a custom outputter is required.
+                Outputters = new List<IOutput>
+                {
+                    new XUnitOutput(_outputHelper)
+                }
+            };
+
+            using (var _webHost = WebHost.CreateDefaultBuilder().UseStartup<TestStartup>().UseUrls(_pactServiceUri).Build())
+            {
+                _webHost.Start();
+
+                //Act / Assert
+                IPactVerifier pactVerifier = new PactVerifier(config);
+                var pactFile = new FileInfo(Path.Join("..", "..", "..", "..", "..", "pacts", "ApiClient-ProductService.json"));
+                pactVerifier.FromPactFile(pactFile)
+                    .WithProviderStateUrl(new Uri($"{_pactServiceUri}/provider-states"))
+                    .ServiceProvider("ProductService", new Uri(_pactServiceUri))
+                    .HonoursPactWith("ApiClient")
+                    .Verify();
             }
-    };
-
-    using (var _webHost = WebHost.CreateDefaultBuilder().UseStartup<TestStartup>().UseUrls(_pactServiceUri).Build())
-    {
-        _webHost.Start();
-
-        //Act / Assert
-        IPactVerifier pactVerifier = new PactVerifier(config);
-        var pactFile = new FileInfo(Path.Join("..", "..", "..", "..", "..", "pacts", "consumer-provider.json"));        
-        pactVerifier.FromPactFile(pactFile)
-            .WithProviderStateUrl(new Uri($"{_pactServiceUri}/provider-states"))
-            .ServiceProvider("Provider", new Uri(_pactServiceUri))
-            .HonoursPactWith("Consumer")
-            .Verify();
+        }
     }
 }
 ```
 
-The **Act/Assert** part of this test creates a new
-[PactVerifier](https://github.com/pact-foundation/pact-net/blob/master/PactNet/PactVerifier.cs)
-instance which first uses a call to ```ProviderState``` to know where our Provider States
-API is hosted. Next, the ```ServiceProvider``` method takes the name of the Provider being
-verified in our case **Provider** and a URI to where it is hosted. Then the
-```HonoursPactWith()``` method tells Pact the name of the consumer that generated the Pact
-which needs to be verified with the Provider API - in our case **Consumer**.  Finally, in
-our workshop, we point Pact directly to the Pact File (instead of hosting elsewhere) and 
-call ```Verify``` to test that the mocked request and responses in the Pact file for our
-Consumer and Provider match the real responses from the Provider API.
+We now need to validate the pact generated by the consumer is valid, by executing it against the running service provider, which should fail:
 
-### Step 4.3 - Running Your Provider API Pact Test
-
-Now we have a test in the Consumer Project which creates our Pact file based on its mock
-requests to the Provider API and we have a Pact test in the Provider API which consumes
-this Pact file to verify the mocks match the actual responses we should run the Provider
-tests!
-
-### Step 4.3.1 - Run your Provider API Pact Test
-
-First, confirm you have a Pact file at ```[RepositoryRoot]/YourSolution/pacts``` called
-consumer-provider.json.
-
-Next, create a command line window and navigate to
-```[RepositoryRoot]/YourSolution/Provider/tests``` and to run the tests type in and execute
-the command below:
-
-```
-dotnet test
-```
-
-Once you run this command and it completes you will hopefully see some output which looks like:
-
-```
+```console
+$ dotnet test
   Determining projects to restore...
-  Restored /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v2/CompletedSolution/Provider/src/provider.csproj (in 75 ms).
-  Restored /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v2/CompletedSolution/Provider/tests/tests.csproj (in 344 ms).
-  provider -> /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v2/CompletedSolution/Provider/src/bin/Debug/netcoreapp3.1/provider.dll
-  tests -> /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v2/CompletedSolution/Provider/tests/bin/Debug/netcoreapp3.1/tests.dll
-Test run for /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v2/CompletedSolution/Provider/tests/bin/Debug/netcoreapp3.1/tests.dll (.NETCoreApp,Version=v3.1)
+  Restored /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/src/provider.csproj (in 71 ms).
+  Restored /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/tests.csproj (in 265 ms).
+  Restored /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/src/provider.csproj (in 575 ms).
+  provider -> /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/src/bin/Debug/netcoreapp3.1/provider.dll
+  tests -> /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/bin/Debug/net5.0/tests.dll
+Test run for /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/bin/Debug/net5.0/tests.dll (.NETCoreApp,Version=v5.0)
 Microsoft (R) Test Execution Command Line Tool Version 16.11.0
 Copyright (c) Microsoft Corporation.  All rights reserved.
 
 Starting test execution, please wait...
 A total of 1 test files matched the specified pattern.
 
-Verifying a pact between Consumer and Provider
-  Given There is data
-  Given There is no data
+Verifying a pact between ApiClient and ProductService
   Given There is data
   Given There is data
-  A invalid GET request for Date Validation with invalid date parameter
+  A valid request for a product
     returns a response which
-      has status code 400 (OK)
+      has status code 200 (FAILED)
+      includes headers
+        "Content-Type" with value "application/json; charset=utf-8" (FAILED)
+      has a matching body (FAILED)
+  A valid request for all products
+    returns a response which
+      has status code 200 (OK)
       includes headers
         "Content-Type" with value "application/json; charset=utf-8" (OK)
       has a matching body (OK)
 
-Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: < 1 ms - /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v2/CompletedSolution/Provider/tests/bin/Debug/netcoreapp3.1/tests.dll (netcoreapp3.1)
+
+Failures:
+
+1) Verifying a pact between ApiClient and ProductService Given There is data - A valid request for a product returns a response which
+    1.1) has a matching body
+           / -> Expected body Present(65 bytes) but was empty
+    1.2) has status code 200
+           expected 200 but was 404
+    1.3) includes header 'Content-Type' with value '"application/json; charset=utf-8"'
+           Expected header 'Content-Type' to have value '"application/json; charset=utf-8"' but was ''
+
+There were 1 pact failures
+
+[xUnit.net 00:00:01.01]     tests.ProductTest.EnsureProviderApiHonoursPactWithConsumer [FAIL]
+  Failed tests.ProductTest.EnsureProviderApiHonoursPactWithConsumer [401 ms]
+  Error Message:
+   PactNet.PactFailureException : The verification process failed, see output for errors
+  Stack Trace:
+     at PactNet.Native.NativePactVerifier.Verify(String args) in /Users/erikdanielsen/work/dius/pact-net/src/PactNet.Native/NativePactVerifier.cs:line 34
+   at PactNet.Native.PactVerifier.Verify() in /Users/erikdanielsen/work/dius/pact-net/src/PactNet.Native/PactVerifier.cs:line 240
+   at tests.ProductTest.EnsureProviderApiHonoursPactWithConsumer() in /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/ProductTest.cs:line 46
+  Standard Output Messages:
+ Invoking the pact verifier with args:
+ --file
+ /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/pacts/ApiClient-ProductService.json
+ --state-change-url
+ http://127.0.0.1:9001/provider-states
+ --provider-name
+ ProductService
+ --hostname
+ 127.0.0.1
+ --port
+ 9001
+ --filter-consumer
+ ApiClient
+ --loglevel
+ trace
+
+
+
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: < 1 ms - /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/bin/Debug/net5.0/tests.dll (net5.0)
 ```
 
-Hopefully, you see the above output which means your Pact Provider test was successful!
-At this point, you now have a working local example of a Pact test suite that tests
-both the Consumer and Provider sides of an application but a few test cases are
-missing...
+![Pact Verification](diagrams/workshop_step4_pact.svg)
 
-## Step 5 - Missing Consumer Pact Test Cases
+The test has failed, as the expected path `/product/{id}` is returning 404. We incorrectly believed our provider was following a RESTful design, but the authors were too lazy to implement a better routing solution 🤷.
 
-The Consumer Pact test suite only has one test in it. But there are a few test cases
-which could also be implemented:
+The correct endpoint which the consumer should call is `/products/{id}`.
 
-* It handles an empty date parameter.
-* It handles having no data in the data folder.
-* It parses a date correctly.
+## Step 5 - Back to the client we go
 
-For the final step of this workshop take some time to update your Consumer Pact tests
-to implement one or all of the test cases above. Once done generate a new Pact file
-by running your Consumer Pact tests and validate your Pact file against the Provider
-API. 
+We now need to update the consumer client and tests to hit the correct product path.
 
-If you are struggling take a look at
-```[RepositoryRoot]/CompletedSolution/Consumer/tests``` which contains the solutions
-to each test case. But perhaps give it a go first!
+First, we need to update the GET route for the client:
 
-# Copyright Notice & Licence 
+In `Consumer/src/ApiClient.cs`:
 
-This workshop is a port of the [Ruby Project for Pact Workshop](https://github.com/DiUS/pact-workshop-ruby-v2) with some
-minor modifications. It is covered under the same Apache License 2.0 as the original Ruby workshop.
+```csharp
+public async Task<HttpResponseMessage> GetProduct(int id)
+{
+    using (var client = new HttpClient { BaseAddress = BaseUri })
+    {
+        try
+        {
+            var response = await client.GetAsync($"/api/products/{id}");
+            return response;
+        }
+        catch (Exception ex)
+        {
+            throw new Exception("There was a problem connecting to Provider API.", ex);
+        }
+    }
+}
+```
+
+Then we need to update the Pact test `ID 10 exists` to use the correct endpoint in `path`.
+
+In `Consumer/tests/ApiTest.cs`:
+
+```csharp
+[Fact]
+public async void GetProduct()
+{
+    // Arange
+    pact.UponReceiving("A valid request for a product")
+            .Given("There is data")
+            .WithRequest(HttpMethod.Get, "/api/products/10")
+        .WillRespond()
+            .WithStatus(HttpStatusCode.OK)
+            .WithHeader("Content-Type", "application/json; charset=utf-8")
+            .WithJsonBody(products[1]);
+
+    await pact.VerifyAsync(async ctx => {
+        var response = await ApiClient.GetProduct(10);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    });
+}
+```
+
+![Pact Verification](diagrams/workshop_step5_pact.svg)
+
+Let's run and generate an updated pact file on the client:
+
+```console
+$ dotnet test
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  consumer -> /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Consumer/src/bin/Debug/netcoreapp3.1/consumer.dll
+  tests -> /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Consumer/tests/bin/Debug/netcoreapp3.1/tests.dll
+Test run for /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Consumer/tests/bin/Debug/netcoreapp3.1/tests.dll (.NETCoreApp,Version=v3.1)
+Microsoft (R) Test Execution Command Line Tool Version 16.11.0
+Copyright (c) Microsoft Corporation.  All rights reserved.
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+
+Passed!  - Failed:     0, Passed:     2, Skipped:     0, Total:     2, Duration: 12 ms - /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Consumer/tests/bin/Debug/netcoreapp3.1/tests.dll (netcoreapp3.1)
+```
+
+Now we run the provider tests again with the updated contract
+
+Run thse command under `Consumer/tests`:
+
+```console
+[1] $ dotnet test                                                                                                                                                                   ✘
+  Determining projects to restore...
+  Restored /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/src/provider.csproj (in 53 ms).
+  Restored /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/tests.csproj (in 225 ms).
+  Restored /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/src/provider.csproj (in 524 ms).
+  provider -> /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/src/bin/Debug/netcoreapp3.1/provider.dll
+  tests -> /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/bin/Debug/net5.0/tests.dll
+Test run for /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/bin/Debug/net5.0/tests.dll (.NETCoreApp,Version=v5.0)
+Microsoft (R) Test Execution Command Line Tool Version 16.11.0
+Copyright (c) Microsoft Corporation.  All rights reserved.
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+
+Verifying a pact between ApiClient and ProductService
+  Given There is data
+  Given There is data
+  A valid request for a product
+    returns a response which
+      has status code 200 (OK)
+      includes headers
+        "Content-Type" with value "application/json; charset=utf-8" (OK)
+      has a matching body (OK)
+  A valid request for all products
+    returns a response which
+      has status code 200 (OK)
+      includes headers
+        "Content-Type" with value "application/json; charset=utf-8" (OK)
+      has a matching body (OK)
+
+
+
+Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: < 1 ms - /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/bin/Debug/net5.0/tests.dll (net5.0)
+```
+
+Yay - green ✅!
+
