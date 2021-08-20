@@ -35,6 +35,8 @@ This workshop should take from 1 to 2 hours, depending on how deep you want to g
   - [Step 3: **pact test**](#step-3---pact-to-the-rescue): Write a Pact test for our consumer
   - [Step 4: **pact verification**](#step-4---verify-the-provider): Verify the consumer pact with the Provider API
   - [Step 5: **fix consumer**](#step-5---back-to-the-client-we-go): Fix the consumer's bad assumptions about the Provider
+  - [step 6: **pact test**](#step-6---consumer-updates-contract-for-missing-products): Write a pact test for `404` (missing User) in consumer
+  - [step 7: **provider states**](#step-7---adding-the-missing-states): Update API to handle `404` case
 
 ## Learning objectives
 
@@ -597,4 +599,245 @@ Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration:
 ```
 
 Yay - green ✅!
+
+## Step 6 - Consumer updates contract for missing products
+
+We're now going to add 2 more scenarios for the contract
+
+- What happens when we make a call for a product that doesn't exist? We assume we'll get a `404`.
+- What happens when we make a call for getting all products but none exist at the moment? We assume a `200` with an empty array.
+
+Let's write a test for these scenarios, and then generate an updated pact file.
+
+In `Consumer/tests/ApiTest.cs`:
+
+```csharp
+[Fact]
+public async void NoProductsExist()
+{
+    // Arange
+    pact.UponReceiving("A valid request for all products")
+            .Given("no products exist")
+            .WithRequest(HttpMethod.Get, "/api/products")
+        .WillRespond()
+            .WithStatus(HttpStatusCode.OK)
+            .WithHeader("Content-Type", "application/json; charset=utf-8")
+            .WithJsonBody(new TypeMatcher(new List<object>()));
+
+    await pact.VerifyAsync(async ctx => {
+        var response = await ApiClient.GetAllProducts();
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    });
+}
+
+[Fact]
+public async void ProductDoesNotExist()
+{
+    // Arange
+    pact.UponReceiving("A valid request for a product")
+            .Given("product with ID 11 does not exist")
+            .WithRequest(HttpMethod.Get, "/api/products/11")
+        .WillRespond()
+            .WithStatus(HttpStatusCode.NotFound);
+
+    await pact.VerifyAsync(async ctx => {
+        var response = await ApiClient.GetProduct(11);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    });
+}
+```
+
+Notice that our new tests look almost identical to our previous tests, and only differ on the expectations of the _response_ - the HTTP request expectations are exactly the same.
+
+```console
+$ dotnet test
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  consumer -> /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Consumer/src/bin/Debug/netcoreapp3.1/consumer.dll
+  tests -> /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Consumer/tests/bin/Debug/netcoreapp3.1/tests.dll
+Test run for /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Consumer/tests/bin/Debug/netcoreapp3.1/tests.dll (.NETCoreApp,Version=v3.1)
+Microsoft (R) Test Execution Command Line Tool Version 16.11.0
+Copyright (c) Microsoft Corporation.  All rights reserved.
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+
+Passed!  - Failed:     0, Passed:     4, Skipped:     0, Total:     4, Duration: 63 ms - /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Consumer/tests/bin/Debug/netcoreapp3.1/tests.dll (netcoreapp3.1)
+```
+
+What does our provider have to say about this new test? 
+
+```console
+$ dotnet test
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  provider -> /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/src/bin/Debug/netcoreapp3.1/provider.dll
+  tests -> /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/bin/Debug/net5.0/tests.dll
+Test run for /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/bin/Debug/net5.0/tests.dll (.NETCoreApp,Version=v5.0)
+Microsoft (R) Test Execution Command Line Tool Version 16.11.0
+Copyright (c) Microsoft Corporation.  All rights reserved.
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+
+Verifying a pact between ApiClient and ProductService
+  Given no products exist
+  Given product does not exist
+  Given product with ID 10 exists
+fail: Microsoft.AspNetCore.Server.Kestrel[13]
+      Connection id "0HMB3KDP4M8GV", Request id "0HMB3KDP4M8GV:00000002": An unhandled exception was thrown by the application.
+      System.Collections.Generic.KeyNotFoundException: The given key 'no products exist' was not present in the dictionary.
+         at System.Collections.Generic.Dictionary`2.get_Item(TKey key)
+         at tests.Middleware.ProviderStateMiddleware.HandleProviderStatesRequest(HttpContext context) in /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/Middleware/ProviderStateMiddleware.cs:line 84
+         at tests.Middleware.ProviderStateMiddleware.Invoke(HttpContext context) in /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/Middleware/ProviderStateMiddleware.cs:line 57
+         at Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http.HttpProtocol.ProcessRequests[TContext](IHttpApplication`1 application)
+fail: Microsoft.AspNetCore.Server.Kestrel[13]
+      Connection id "0HMB3KDP4M8H0", Request id "0HMB3KDP4M8H0:00000002": An unhandled exception was thrown by the application.
+      System.Collections.Generic.KeyNotFoundException: The given key 'product does not exist' was not present in the dictionary.
+         at System.Collections.Generic.Dictionary`2.get_Item(TKey key)
+         at tests.Middleware.ProviderStateMiddleware.HandleProviderStatesRequest(HttpContext context) in /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/Middleware/ProviderStateMiddleware.cs:line 84
+         at tests.Middleware.ProviderStateMiddleware.Invoke(HttpContext context) in /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/Middleware/ProviderStateMiddleware.cs:line 57
+         at Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http.HttpProtocol.ProcessRequests[TContext](IHttpApplication`1 application)
+  Given products exist
+  A valid request for all products
+      Request Failed - One or more of the state change handlers has failed
+  A valid request for a product
+      Request Failed - One or more of the state change handlers has failed
+  A valid request for a product
+    returns a response which
+      has status code 200 (OK)
+      includes headers
+        "Content-Type" with value "application/json; charset=utf-8" (OK)
+      has a matching body (OK)
+  A valid request for all products
+    returns a response which
+      has status code 200 (OK)
+      includes headers
+        "Content-Type" with value "application/json; charset=utf-8" (OK)
+      has a matching body (OK)
+
+
+Failures:
+
+1) Verifying a pact between ApiClient and ProductService Given no products exist - A valid request for all products - One or more of the state change handlers has failed
+
+2) Verifying a pact between ApiClient and ProductService Given product does not exist - A valid request for a product - One or more of the state change handlers has failed
+
+
+There were 2 pact failures
+
+[xUnit.net 00:00:00.93]     tests.ProductTest.EnsureProviderApiHonoursPactWithConsumer [FAIL]
+  Failed tests.ProductTest.EnsureProviderApiHonoursPactWithConsumer [392 ms]
+  Error Message:
+   PactNet.PactFailureException : The verification process failed, see output for errors
+  Stack Trace:
+     at PactNet.Native.NativePactVerifier.Verify(String args) in /Users/erikdanielsen/work/dius/pact-net/src/PactNet.Native/NativePactVerifier.cs:line 34
+   at PactNet.Native.PactVerifier.Verify() in /Users/erikdanielsen/work/dius/pact-net/src/PactNet.Native/PactVerifier.cs:line 240
+   at tests.ProductTest.EnsureProviderApiHonoursPactWithConsumer() in /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/ProductTest.cs:line 46
+  Standard Output Messages:
+ Invoking the pact verifier with args:
+ --file
+ /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/pacts/ApiClient-ProductService.json
+ --state-change-url
+ http://127.0.0.1:9001/provider-states
+ --provider-name
+ ProductService
+ --hostname
+ 127.0.0.1
+ --port
+ 9001
+ --filter-consumer
+ ApiClient
+ --loglevel
+ trace
+
+
+
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: < 1 ms - /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/bin/Debug/net5.0/tests.dll (net5.0)
+```
+
+We got two failures related to provider state:
+```
+fail: Microsoft.AspNetCore.Server.Kestrel[13]
+      Connection id "0HMB3KDP4M8GV", Request id "0HMB3KDP4M8GV:00000002": An unhandled exception was thrown by the application.
+      System.Collections.Generic.KeyNotFoundException: The given key 'no products exist' was not present in the dictionary.
+         at System.Collections.Generic.Dictionary`2.get_Item(TKey key)
+         at tests.Middleware.ProviderStateMiddleware.HandleProviderStatesRequest(HttpContext context) in /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/Middleware/ProviderStateMiddleware.cs:line 84
+         at tests.Middleware.ProviderStateMiddleware.Invoke(HttpContext context) in /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/Middleware/ProviderStateMiddleware.cs:line 57
+         at Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http.HttpProtocol.ProcessRequests[TContext](IHttpApplication`1 application)
+fail: Microsoft.AspNetCore.Server.Kestrel[13]
+      Connection id "0HMB3KDP4M8H0", Request id "0HMB3KDP4M8H0:00000002": An unhandled exception was thrown by the application.
+      System.Collections.Generic.KeyNotFoundException: The given key 'product does not exist' was not present in the dictionary.
+         at System.Collections.Generic.Dictionary`2.get_Item(TKey key)
+         at tests.Middleware.ProviderStateMiddleware.HandleProviderStatesRequest(HttpContext context) in /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/Middleware/ProviderStateMiddleware.cs:line 84
+         at tests.Middleware.ProviderStateMiddleware.Invoke(HttpContext context) in /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/Middleware/ProviderStateMiddleware.cs:line 57
+         at Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http.HttpProtocol.ProcessRequests[TContext](IHttpApplication`1 application)
+```
+
+We can solve this by making sure we handle the missing provider states, which also helps us understand how Provider states work more generally.
+
+## Step 7 - Adding the missing states
+
+Our code already deals with missing products and sends a `404` response, however our test data fixture always has product ID 9 and 10 in our database.
+
+In this step, we will add a state handler to our provider Pact verifications, which will update the state of our data store depending on which states the consumers require.
+
+States are invoked prior to the actual test function is invoked. You can see the full [lifecycle here](https://github.com/pact-foundation/pact-go#lifecycle-of-a-provider-verification).
+
+We're going to add handlers for all our states:
+
+- products exist
+- no products exist
+- product with ID 10 exists
+- product with ID 11 does not exist
+
+Let's open up our provider Pact verifications in `Provider/tests/Middleware/ProviderStateMiddleware`:
+
+```csharp
+// update the dictionary defined in the constructor
+_providerStates = new Dictionary<string, Action>
+{
+    { "products exist", ProductsExist },
+    { "no products exist", NoProductsExist },
+    { "product with ID 11 does not exist", Product11DoesNotExist },
+    { "product with ID 10 exists", Product10Exists }
+};
+```
+
+Also implement handlers for the two new states:
+
+```csharp
+private void NoProductsExist()
+{
+    _repository.SetState(new List<Product>());
+}
+
+private void Product11DoesNotExist()
+{
+    ProductsExist();
+}
+```
+
+In `NoProductsExist()` we set the current state to an empty list. For `Product11DoesNotExist()` we can just use one of the existing states since product 11 does not exist.
+
+Let's see how we go now:
+
+```console
+erikdanielsen@Erik’s MacBook Pro:~/work/dius/pact-workshop-dotnet-core-v3/Consumer/tests (branch: master!)
+$ dotnet test
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  consumer -> /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Consumer/src/bin/Debug/netcoreapp3.1/consumer.dll
+  tests -> /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Consumer/tests/bin/Debug/netcoreapp3.1/tests.dll
+Test run for /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Consumer/tests/bin/Debug/netcoreapp3.1/tests.dll (.NETCoreApp,Version=v3.1)
+Microsoft (R) Test Execution Command Line Tool Version 16.11.0
+Copyright (c) Microsoft Corporation.  All rights reserved.
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+
+Passed!  - Failed:     0, Passed:     4, Skipped:     0, Total:     4, Duration: 61 ms - /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Consumer/tests/bin/Debug/netcoreapp3.1/tests.dll (netcoreapp3.1)
+```
+
+_NOTE_: The states are not necessarily a 1 to 1 mapping with the consumer contract tests. You can reuse states amongst different tests. In this scenario we could have used `no products exist` for both tests which would have equally been valid.
 
