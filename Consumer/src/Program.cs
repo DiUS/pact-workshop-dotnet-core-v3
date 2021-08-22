@@ -13,8 +13,9 @@ namespace Consumer
             var responseBody = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
             Console.WriteLine($"Response.Code={response.StatusCode}, Response.Body={responseBody}\n\n");
 
-            Console.WriteLine("**Retrieving product with id=1**");
-            response = ApiClient.GetProduct(10).GetAwaiter().GetResult();
+            int productId = 10;
+            Console.WriteLine($"**Retrieving product with id={productId}");
+            response = ApiClient.GetProduct(productId).GetAwaiter().GetResult();
             responseBody = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
             Console.WriteLine($"Response.Code={response.StatusCode}, Response.Body={responseBody}");
         }
