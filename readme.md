@@ -201,7 +201,7 @@ Response.Code=OK, Response.Body=[
 Response.Code=NotFound, Response.Body=
 ```
 
-So we're able to retrieve a list of products but not a specific product even though one exists with id=1. We're getting a *404* response every time we attempt to access an individual product.
+So we're able to retrieve a list of products but not a specific product even though one exists with id=10. We're getting a *404* response every time we attempt to access an individual product.
 
 We need to have a conversation about what the endpoint should be!
 
