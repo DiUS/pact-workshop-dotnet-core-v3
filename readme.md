@@ -363,15 +363,7 @@ namespace tests
 
         public ProductTest(ITestOutputHelper output)
         {
-            if (context.Request.Path.StartsWithSegments("/provider-states/"))
-            {
-                await this.HandleProviderStatesRequest(context);
-                await context.Response.WriteAsync(String.Empty);
-            }
-            else
-            {
-                await this._next(context);
-            }
+            _outputHelper = output;
         }
 
         [Fact]
