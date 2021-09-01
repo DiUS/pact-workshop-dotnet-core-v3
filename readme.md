@@ -1489,5 +1489,3 @@ Verifying a pact between ApiClient and ProductService
 Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: < 1 ms - /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/bin/Debug/net5.0/tests.dll (net5.0)
 ```
 
-*Move on to [step 11](https://github.com/pact-foundation/pact-workshop-js/tree/step11#step-11---using-a-pact-broker)*
-
