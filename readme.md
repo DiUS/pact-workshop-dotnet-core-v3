@@ -1387,7 +1387,7 @@ _NOTE_: We are not considering the `403` scenario in this example.
 
 We'll implement this as a Middleware, similarly to have we deal with `provider states`.
 
-In the folder `Provider/tests/Middleware` add a new file called `AuthTokenRequestFilter`:
+In the folder `Provider/tests/Middleware` add a new file called `AuthTokenRequestFilter.cs`:
 
 ```csharp
 using System;
