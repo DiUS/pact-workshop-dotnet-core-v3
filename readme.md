@@ -37,7 +37,8 @@ This workshop should take from 1 to 2 hours, depending on how deep you want to g
   - [Step 5: **fix consumer**](#step-5---back-to-the-client-we-go): Fix the consumer's bad assumptions about the Provider
   - [step 6: **pact test**](#step-6---consumer-updates-contract-for-missing-products): Write a pact test for `404` (missing User) in consumer
   - [step 7: **provider states**](#step-7---adding-the-missing-states): Update API to handle `404` case
-
+  - [step 9: **pact test**](#step-9---implement-authorisation-on-the-provider): Update API to handle `401` case
+  - [step 10: **request filters**](#step-10---request-filters-on-the-provider): Fix the provider to support the `401` case
 ## Learning objectives
 
 If running this as a team workshop format, you may want to take a look through the [learning objectives](./LEARNING.md).
@@ -832,4 +833,661 @@ Passed!  - Failed:     0, Passed:     4, Skipped:     0, Total:     4, Duration:
 ```
 
 _NOTE_: The states are not necessarily a 1 to 1 mapping with the consumer contract tests. You can reuse states amongst different tests. In this scenario we could have used `no products exist` for both tests which would have equally been valid.
+
+## Step 8 - Authorization
+
+It turns out that not everyone should be able to use the API. After a discussion with the team, it was decided that a time-bound bearer token would suffice. The token must be in `yyyy-MM-ddTHHmm` format and within 1 hour of the current time.
+
+In the case a valid bearer token is not provided, we expect a `401`. Let's first update the consumer tests and add scenarios for expected the `Authorization` header. In `Consumer/tests/ApiTest.cs`:
+
+```csharp
+[Fact]
+public async void GetAllProducts()
+{
+    // Arange
+    pact.UponReceiving("A valid request for all products")
+            .Given("products exist")
+            .WithRequest(HttpMethod.Get, "/api/products")
+            .WithHeader("Authorization", Match.Regex("Bearer 2019-01-14T11:34:18.045Z", "Bearer \\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z"))
+        .WillRespond()
+            .WithStatus(HttpStatusCode.OK)
+            .WithHeader("Content-Type", "application/json; charset=utf-8")
+            .WithJsonBody(new TypeMatcher(products));
+
+    await pact.VerifyAsync(async ctx => {
+        var response = await ApiClient.GetAllProducts();
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    });
+}
+
+[Fact]
+public async void GetProduct()
+{
+    // Arange
+    pact.UponReceiving("A valid request for a product")
+            .Given("product with ID 10 exists")
+            .WithRequest(HttpMethod.Get, "/api/products/10")
+            .WithHeader("Authorization", Match.Regex("Bearer 2019-01-14T11:34:18.045Z", "Bearer \\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z"))
+        .WillRespond()
+            .WithStatus(HttpStatusCode.OK)
+            .WithHeader("Content-Type", "application/json; charset=utf-8")
+            .WithJsonBody(new TypeMatcher(products[1]));
+
+    await pact.VerifyAsync(async ctx => {
+        var response = await ApiClient.GetProduct(10);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    });
+}
+
+[Fact]
+public async void NoProductsExist()
+{
+    // Arange
+    pact.UponReceiving("A valid request for all products")
+            .Given("no products exist")
+            .WithRequest(HttpMethod.Get, "/api/products")
+            .WithHeader("Authorization", Match.Regex("Bearer 2019-01-14T11:34:18.045Z", "Bearer \\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z"))
+        .WillRespond()
+            .WithStatus(HttpStatusCode.OK)
+            .WithHeader("Content-Type", "application/json; charset=utf-8")
+            .WithJsonBody(new TypeMatcher(new List<object>()));
+
+    await pact.VerifyAsync(async ctx => {
+        var response = await ApiClient.GetAllProducts();
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    });
+}
+
+[Fact]
+public async void ProductDoesNotExist()
+{
+    // Arange
+    pact.UponReceiving("A valid request for a product")
+            .Given("product with ID 11 does not exist")
+            .WithRequest(HttpMethod.Get, "/api/products/11")
+            .WithHeader("Authorization", Match.Regex("Bearer 2019-01-14T11:34:18.045Z", "Bearer \\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z"))
+        .WillRespond()
+            .WithStatus(HttpStatusCode.Unauthorized);
+
+    await pact.VerifyAsync(async ctx => {
+        var response = await ApiClient.GetProduct(11);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    });
+
+    [Fact]
+    public async void GetProductMissingAuthHeader()
+    {
+        // Arange
+        pact.UponReceiving("A valid request for a product")
+                .Given("No auth token is provided")
+                .WithRequest(HttpMethod.Get, "/api/products/10")
+            .WillRespond()
+                .WithStatus(HttpStatusCode.Unauthorized);
+
+        await pact.VerifyAsync(async ctx => {
+            var response = await ApiClient.GetProduct(10);
+            Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        });
+    }
+}
+```
+
+We could implement the header as well but let's first briefly explain what's going on here. Instead of simply entering a header we use a `matcher`. A matcher
+can be used when we don't necessarily need to test exact values but e.g. just check the type, or the pattern. In the example above we use a `Regex` matcher.
+We provide an example value (which will end up in the pact file) as well as the pattern we want the value to match. This means that we can dynamically generate
+the value and still have a passing test.
+
+Before we implement the change, let's see what happens if we run it without implementing. The output is very long so it's been abbreviated to show the only one
+the four test cases:
+
+```console
+[1] $ dotnet test                                                                                                                                                                                                  ✘
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  consumer -> /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Consumer/src/bin/Debug/netcoreapp3.1/consumer.dll
+  tests -> /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Consumer/tests/bin/Debug/netcoreapp3.1/tests.dll
+Test run for /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Consumer/tests/bin/Debug/netcoreapp3.1/tests.dll (.NETCoreApp,Version=v3.1)
+Microsoft (R) Test Execution Command Line Tool Version 16.11.0
+Copyright (c) Microsoft Corporation.  All rights reserved.
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:00.46]     tests.ApiTest.ProductDoesNotExist [FAIL]
+[xUnit.net 00:00:00.51]     tests.ApiTest.GetAllProducts [FAIL]
+[xUnit.net 00:00:00.52]     tests.ApiTest.GetProduct [FAIL]
+[xUnit.net 00:00:00.52]     tests.ApiTest.NoProductsExist [FAIL]
+  Failed tests.ApiTest.ProductDoesNotExist [58 ms]
+  Error Message:
+   Assert.Equal() Failure
+Expected: NotFound
+Actual:   InternalServerError
+  Stack Trace:
+     at tests.ApiTest.<ProductDoesNotExist>b__8_0(IConsumerContext ctx) in /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Consumer/tests/ApiTest.cs:line 116
+   at PactNet.Native.NativePactBuilder.VerifyAsync(Func`2 interact) in /Users/erikdanielsen/work/dius/pact-net/src/PactNet.Native/NativePactBuilder.cs:line 112
+   at tests.ApiTest.ProductDoesNotExist() in /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Consumer/tests/ApiTest.cs:line 114
+   at System.Threading.Tasks.Task.<>c.<ThrowAsync>b__139_0(Object state)
+  Standard Output Messages:
+ Mock server logs:
+
+ [DEBUG][pact_mock_server::hyper_server] Creating pact request from hyper request
+ [DEBUG][pact_mock_server::hyper_server] Extracting query from uri /api/products/11
+ [INFO][pact_mock_server::hyper_server] Received request Request ( method: GET, path: /api/products/11, query: None, headers: Some({"host": ["localhost:9000"]}), body: Empty )
+ [INFO][pact_matching] comparing to expected Request ( method: GET, path: /api/products/11, query: None, headers: Some({"Authorization": ["Bearer 2019-01-14T11:34:18.045Z"]}), body: Missing )
+ [DEBUG][pact_matching]      body: ''
+ [DEBUG][pact_matching]      matching_rules: MatchingRules { rules: {PATH: MatchingRuleCategory { name: PATH, rules: {} }, HEADER: MatchingRuleCategory { name: HEADER, rules: {"Authorization": RuleList { rules: [Regex("Bearer \\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z")], rule_logic: And }} }} }
+ [DEBUG][pact_matching]      generators: Generators { categories: {} }
+ [DEBUG][pact_matching::matchers] String -> String: comparing '/api/products/11' to '/api/products/11' using Equality
+ [DEBUG][pact_matching] expected content type = '*/*', actual content type = '*/*'
+ [DEBUG][pact_matching] content type header matcher = 'None'
+ [DEBUG][pact_matching] --> Mismatches: [HeaderMismatch { key: "Authorization", expected: "\"Bearer 2019-01-14T11:34:18.045Z\"", actual: "", mismatch: "Expected header 'Authorization' but was missing" }]
+ [DEBUG][pact_mock_server::hyper_server] Request did not match: Request did not match - Request ( method: GET, path: /api/products/11, query: None, headers: Some({"Authorization": ["Bearer 2019-01-14T11:34:18.045Z"]}), body: Missing )    0) Expected header 'Authorization' but was missing
+```
+
+The key information can be found in the `DEBUG` output:
+
+```console
+[INFO][pact_matching] comparing to expected Request ( method: GET, path: /api/products/11, query: None, headers: Some({"Authorization": ["Bearer 2019-01-14T11:34:18.045Z"]}), body: Missing )
+ [DEBUG][pact_matching]      body: ''
+ [DEBUG][pact_matching]      matching_rules: MatchingRules { rules: {PATH: MatchingRuleCategory { name: PATH, rules: {} }, HEADER: MatchingRuleCategory { name: HEADER, rules: {"Authorization": RuleList { rules: [Regex("Bearer \\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z")], rule_logic: And }} }} }
+ ```
+
+Let's update the consumer to pass the bearer token.
+
+In `consumer/ApiClient.cs`:
+
+```csharp
+public async Task<HttpResponseMessage> GetAllProducts()
+{
+    using (var client = new HttpClient { BaseAddress = BaseUri })
+    {
+        try
+        {
+            client.DefaultRequestHeaders.Add("Authorization", AuthorizationHeaderValue()); 
+            var response = await client.GetAsync($"/api/products");
+            return response;
+        }
+        catch (Exception ex)
+        {
+            throw new Exception("There was a problem connecting to Provider API.", ex);
+        }
+    }
+}
+
+public async Task<HttpResponseMessage> GetProduct(int id)
+{
+    using (var client = new HttpClient { BaseAddress = BaseUri })
+    {
+        try
+        {
+            client.DefaultRequestHeaders.Add("Authorization", AuthorizationHeaderValue());
+            var response = await client.GetAsync($"/api/products/{id}");
+            return response;
+        }
+        catch (Exception ex)
+        {
+            throw new Exception("There was a problem connecting to Provider API.", ex);
+        }
+    }
+}
+
+private string AuthorizationHeaderValue()
+{
+    return $"Bearer {DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")}";
+}
+```
+
+Generate a new Pact file:
+
+```console
+$ dotnet test
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  consumer -> /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Consumer/src/bin/Debug/netcoreapp3.1/consumer.dll
+  tests -> /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Consumer/tests/bin/Debug/netcoreapp3.1/tests.dll
+Test run for /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Consumer/tests/bin/Debug/netcoreapp3.1/tests.dll (.NETCoreApp,Version=v3.1)
+Microsoft (R) Test Execution Command Line Tool Version 16.11.0
+Copyright (c) Microsoft Corporation.  All rights reserved.
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+
+Passed!  - Failed:     0, Passed:     5, Skipped:     0, Total:     5, Duration: 65 ms - /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Consumer/tests/bin/Debug/netcoreapp3.1/tests.dll (netcoreapp3.1)
+
+```
+
+The changes in the pact file is now that we have some logic for header matching:
+
+```json
+  "request": {
+    "headers": {
+      "Authorization": "Bearer 2019-01-14T11:34:18.045Z"
+    },
+    "matchingRules": {
+      "header": {
+        "Authorization": {
+          "combine": "AND",
+          "matchers": [
+            {
+              "match": "regex",
+              "regex": "Bearer \\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z"
+            }
+          ]
+        }
+      }
+    },
+    "method": "GET",
+    "path": "/api/products"
+  }
+```
+
+Let's test the provider. Run the command:
+
+```console
+[1] $ dotnet test                                                                                                                                                                                                  ✘
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  provider -> /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/src/bin/Debug/netcoreapp3.1/provider.dll
+  tests -> /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/bin/Debug/net5.0/tests.dll
+Test run for /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/bin/Debug/net5.0/tests.dll (.NETCoreApp,Version=v5.0)
+Microsoft (R) Test Execution Command Line Tool Version 16.11.0
+Copyright (c) Microsoft Corporation.  All rights reserved.
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+
+Verifying a pact between ApiClient and ProductService
+  Given no products exist
+  Given product with ID 10 exists
+  Given product with ID 10 exists
+  Given product with ID 11 does not exist
+  Given products exist
+  A valid request for all products
+    returns a response which
+      has status code 200 (OK)
+      includes headers
+        "Content-Type" with value "application/json; charset=utf-8" (OK)
+      has a matching body (OK)
+  A request for a product with no auth token provided
+    returns a response which
+      has status code 401 (FAILED)
+      has a matching body (OK)
+  A valid request for a product
+    returns a response which
+      has status code 200 (OK)
+      includes headers
+        "Content-Type" with value "application/json; charset=utf-8" (OK)
+      has a matching body (OK)
+  A valid request for a product
+    returns a response which
+      has status code 404 (OK)
+      has a matching body (OK)
+  A valid request for all products
+    returns a response which
+      has status code 200 (OK)
+      includes headers
+        "Content-Type" with value "application/json; charset=utf-8" (OK)
+      has a matching body (OK)
+
+
+Failures:
+
+1) Verifying a pact between ApiClient and ProductService Given product with ID 10 exists - A request for a product with no auth token provided returns a response which
+    1.1) has status code 401
+           expected 401 but was 200
+
+There were 1 pact failures
+
+[xUnit.net 00:00:01.08]     tests.ProductTest.EnsureProviderApiHonoursPactWithConsumer [FAIL]
+  Failed tests.ProductTest.EnsureProviderApiHonoursPactWithConsumer [425 ms]
+  Error Message:
+   PactNet.PactFailureException : The verification process failed, see output for errors
+  Stack Trace:
+     at PactNet.Native.NativePactVerifier.Verify(String args) in /Users/erikdanielsen/work/dius/pact-net/src/PactNet.Native/NativePactVerifier.cs:line 34
+   at PactNet.Native.PactVerifier.Verify() in /Users/erikdanielsen/work/dius/pact-net/src/PactNet.Native/PactVerifier.cs:line 240
+   at tests.ProductTest.EnsureProviderApiHonoursPactWithConsumer() in /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/ProductTest.cs:line 46
+  Standard Output Messages:
+ Invoking the pact verifier with args:
+ --file
+ /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/pacts/ApiClient-ProductService.json
+ --state-change-url
+ http://127.0.0.1:9001/provider-states
+ --provider-name
+ ProductService
+ --hostname
+ 127.0.0.1
+ --port
+ 9001
+ --filter-consumer
+ ApiClient
+ --loglevel
+ trace
+
+
+
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: < 1 ms - /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/bin/Debug/net5.0/tests.dll (net5.0)
+```
+
+Now with the most recently added interactions where we are expecting a response of 401 when no authorization header is sent, we are getting 200...
+
+## Step 9 - Implement authorisation on the provider
+
+We will add a middleware to check the Authorization header and deny the request with `401` if the token is older than 1 hour.
+
+
+In a new folder called `Middleware`, create a class called `AuthorizationMiddleware`:
+
+```csharp
+using System;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
+
+namespace provider.Middleware
+{
+    public class AuthorizationMiddleware
+    {
+        private const string AuthorizationHeaderKey = "Authorization";
+        private readonly RequestDelegate _next;
+
+        public AuthorizationMiddleware(RequestDelegate next)
+        {
+            _next = next;
+        }
+
+        public async Task Invoke(HttpContext context)
+        {
+            if (context.Request.Headers.ContainsKey(AuthorizationHeaderKey))
+            {
+                DateTime tokenTime = DateTime.Parse(AuthorizationHeader(context.Request));
+
+                if (IsOlderThanOneHour(tokenTime))
+                {
+                    UnauthorizedResponse(context);
+                }
+                else
+                {
+                    await this._next(context);
+                }
+            }
+            else
+            {
+                UnauthorizedResponse(context);
+            }
+        }
+
+        private string AuthorizationHeader(HttpRequest request)
+        {
+            request.Headers.TryGetValue(AuthorizationHeaderKey, out var authorizationHeader);
+            var match = Regex.Match(authorizationHeader, "Bearer (.*)");
+            return match.Groups[1].Value;
+        }
+
+        private bool IsOlderThanOneHour(DateTime tokenTime)
+        {
+            return tokenTime < DateTime.Now.AddHours(-1);
+        }
+
+        private void UnauthorizedResponse(HttpContext context)
+        {
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        }
+    }
+}
+```
+
+Add the middleware in `Startup.cs`, includeing the `using` statement:
+
+```csharp
+using provider.Middleware;
+
+...
+
+// This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
+public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
+{
+    if (env.IsDevelopment())
+    {
+        app.UseDeveloperExceptionPage();
+    }
+    app.UseMiddleware<AuthorizationMiddleware>();
+    app.UseRouting();
+    app.UseEndpoints(e => e.MapControllers());
+}
+```
+
+This means that a client must present an HTTP `Authorization` header that looks as follows:
+
+```
+Authorization: Bearer 2006-01-02T15:04
+```
+
+Let's test this out:
+
+```console
+[1] $ dotnet test                                                                                                                                                                                                  ✘
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  provider -> /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/src/bin/Debug/netcoreapp3.1/provider.dll
+  tests -> /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/bin/Debug/net5.0/tests.dll
+Test run for /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/bin/Debug/net5.0/tests.dll (.NETCoreApp,Version=v5.0)
+Microsoft (R) Test Execution Command Line Tool Version 16.11.0
+Copyright (c) Microsoft Corporation.  All rights reserved.
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+
+Verifying a pact between ApiClient and ProductService
+  Given no products exist
+  Given product with ID 10 exists
+  Given product with ID 10 exists
+  Given product with ID 11 does not exist
+  Given products exist
+  A valid request for all products
+    returns a response which
+      has status code 200 (FAILED)
+      includes headers
+        "Content-Type" with value "application/json; charset=utf-8" (FAILED)
+      has a matching body (FAILED)
+  A request for a product with no auth token provided
+    returns a response which
+      has status code 401 (OK)
+      has a matching body (OK)
+  A valid request for a product
+    returns a response which
+      has status code 200 (FAILED)
+      includes headers
+        "Content-Type" with value "application/json; charset=utf-8" (FAILED)
+      has a matching body (FAILED)
+  A valid request for a product
+    returns a response which
+      has status code 404 (FAILED)
+      has a matching body (OK)
+  A valid request for all products
+    returns a response which
+      has status code 200 (FAILED)
+      includes headers
+        "Content-Type" with value "application/json; charset=utf-8" (FAILED)
+      has a matching body (FAILED)
+
+
+Failures:
+
+1) Verifying a pact between ApiClient and ProductService Given no products exist - A valid request for all products returns a response which
+    1.1) has a matching body
+           / -> Expected body Present(2 bytes) but was empty
+    1.2) has status code 200
+           expected 200 but was 401
+    1.3) includes header 'Content-Type' with value '"application/json; charset=utf-8"'
+           Expected header 'Content-Type' to have value '"application/json; charset=utf-8"' but was ''
+2) Verifying a pact between ApiClient and ProductService Given product with ID 10 exists - A valid request for a product returns a response which
+    2.1) has a matching body
+           / -> Expected body Present(65 bytes) but was empty
+    2.2) has status code 200
+           expected 200 but was 401
+    2.3) includes header 'Content-Type' with value '"application/json; charset=utf-8"'
+           Expected header 'Content-Type' to have value '"application/json; charset=utf-8"' but was ''
+3) Verifying a pact between ApiClient and ProductService Given product with ID 11 does not exist - A valid request for a product returns a response which
+    3.1) has status code 404
+           expected 404 but was 401
+4) Verifying a pact between ApiClient and ProductService Given products exist - A valid request for all products returns a response which
+    4.1) has a matching body
+           / -> Expected body Present(130 bytes) but was empty
+    4.2) has status code 200
+           expected 200 but was 401
+    4.3) includes header 'Content-Type' with value '"application/json; charset=utf-8"'
+           Expected header 'Content-Type' to have value '"application/json; charset=utf-8"' but was ''
+
+There were 4 pact failures
+
+[xUnit.net 00:00:00.88]     tests.ProductTest.EnsureProviderApiHonoursPactWithConsumer [FAIL]
+  Failed tests.ProductTest.EnsureProviderApiHonoursPactWithConsumer [313 ms]
+  Error Message:
+   PactNet.PactFailureException : The verification process failed, see output for errors
+  Stack Trace:
+     at PactNet.Native.NativePactVerifier.Verify(String args) in /Users/erikdanielsen/work/dius/pact-net/src/PactNet.Native/NativePactVerifier.cs:line 34
+   at PactNet.Native.PactVerifier.Verify() in /Users/erikdanielsen/work/dius/pact-net/src/PactNet.Native/PactVerifier.cs:line 240
+   at tests.ProductTest.EnsureProviderApiHonoursPactWithConsumer() in /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/ProductTest.cs:line 46
+  Standard Output Messages:
+ Invoking the pact verifier with args:
+ --file
+ /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/pacts/ApiClient-ProductService.json
+ --state-change-url
+ http://127.0.0.1:9001/provider-states
+ --provider-name
+ ProductService
+ --hostname
+ 127.0.0.1
+ --port
+ 9001
+ --filter-consumer
+ ApiClient
+ --loglevel
+ trace
+
+
+
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: < 1 ms - /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/bin/Debug/net5.0/tests.dll (net5.0)
+```
+
+Oh, dear. _More_ tests are failing. Can you understand why?
+
+## Step 10 - Request Filters on the Provider
+
+Because our pact file has static data in it, our bearer token is now out of date, so when Pact verification passes it to the Provider we get a `401`. There are multiple ways to resolve this - mocking or stubbing out the authentication component is a common one. In our use case, we are going to use a process referred to as _Request Filtering_, using a `RequestFilter`.
+
+_NOTE_: This is an advanced concept and should be used carefully, as it has the potential to invalidate a contract by bypassing its constraints. See https://github.com/DiUS/pact-jvm/blob/master/provider/junit/README.md#modifying-the-requests-before-they-are-sent for more details on this.
+
+The approach we are going to take to inject the header is as follows:
+
+1. If we receive any Authorization header, we override the incoming request with a valid (in time) Authorization header, and continue with whatever call was being made
+1. If we don't receive an Authorization header, we do nothing
+
+_NOTE_: We are not considering the `403` scenario in this example.
+
+We'll implement this as a Middleware, similarly to have we deal with `provider states`.
+
+In the folder `Provider/tests/Middleware` add a new file called `AuthTokenRequestFilter`:
+
+```csharp
+using System;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Primitives;
+
+namespace tests.Middleware
+{
+    public class AuthTokenRequestFilter
+    {
+        private const string AuthorizationHeaderKey = "Authorization";
+        private readonly RequestDelegate _next;
+
+        public AuthTokenRequestFilter(RequestDelegate next)
+        {
+            _next = next;
+        }
+
+        public async Task Invoke(HttpContext context)
+        {
+            if (context.Request.Headers.ContainsKey(AuthorizationHeaderKey))
+            {
+                context.Request.Headers.Remove(AuthorizationHeaderKey);
+                context.Request.Headers.Add(AuthorizationHeaderKey, HeaderValue());
+            }
+            await this._next(context);
+        }
+
+        private StringValues HeaderValue()
+        {
+            return $"Bearer {DateTime.Now:yyyy-MM-ddTHH:mm:ss.fffZ}";
+        }
+    }
+}
+```
+
+Then wire the new middleware in `Provider/tests/Middleware/AuthTokenRequestFilter.cs`
+
+```csharp
+// This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
+public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
+{
+    app.UseMiddleware<ProviderStateMiddleware>();
+    app.UseMiddleware<AuthTokenRequestFilter>();
+    _proxy.Configure(app, env);
+}
+```
+
+We can now run the Provider tests
+
+```console
+[1] $ dotnet test                                                                                                                                                                                                  ✘
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  provider -> /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/src/bin/Debug/netcoreapp3.1/provider.dll
+  tests -> /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/bin/Debug/net5.0/tests.dll
+Test run for /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/bin/Debug/net5.0/tests.dll (.NETCoreApp,Version=v5.0)
+Microsoft (R) Test Execution Command Line Tool Version 16.11.0
+Copyright (c) Microsoft Corporation.  All rights reserved.
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+
+Verifying a pact between ApiClient and ProductService
+  Given no products exist
+  Given product with ID 10 exists
+  Given product with ID 10 exists
+  Given product with ID 11 does not exist
+  Given products exist
+  A valid request for all products
+    returns a response which
+      has status code 200 (OK)
+      includes headers
+        "Content-Type" with value "application/json; charset=utf-8" (OK)
+      has a matching body (OK)
+  A request for a product with no auth token provided
+    returns a response which
+      has status code 401 (OK)
+      has a matching body (OK)
+  A valid request for a product
+    returns a response which
+      has status code 200 (OK)
+      includes headers
+        "Content-Type" with value "application/json; charset=utf-8" (OK)
+      has a matching body (OK)
+  A valid request for a product
+    returns a response which
+      has status code 404 (OK)
+      has a matching body (OK)
+  A valid request for all products
+    returns a response which
+      has status code 200 (OK)
+      includes headers
+        "Content-Type" with value "application/json; charset=utf-8" (OK)
+      has a matching body (OK)
+
+
+
+Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: < 1 ms - /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/bin/Debug/net5.0/tests.dll (net5.0)
+```
+
+*Move on to [step 11](https://github.com/pact-foundation/pact-workshop-js/tree/step11#step-11---using-a-pact-broker)*
 
