@@ -35,10 +35,10 @@ This workshop should take from 1 to 2 hours, depending on how deep you want to g
   - [Step 3: **pact test**](#step-3---pact-to-the-rescue): Write a Pact test for our consumer
   - [Step 4: **pact verification**](#step-4---verify-the-provider): Verify the consumer pact with the Provider API
   - [Step 5: **fix consumer**](#step-5---back-to-the-client-we-go): Fix the consumer's bad assumptions about the Provider
-  - [step 6: **pact test**](#step-6---consumer-updates-contract-for-missing-products): Write a pact test for `404` (missing User) in consumer
-  - [step 7: **provider states**](#step-7---adding-the-missing-states): Update API to handle `404` case
-  - [step 9: **pact test**](#step-9---implement-authorisation-on-the-provider): Update API to handle `401` case
-  - [step 10: **request filters**](#step-10---request-filters-on-the-provider): Fix the provider to support the `401` case
+  - [Step 6: **pact test**](#step-6---consumer-updates-contract-for-missing-products): Write a pact test for `404` (missing User) in consumer
+  - [Step 7: **provider states**](#step-7---adding-the-missing-states): Update API to handle `404` case
+  - [Step 9: **pact test**](#step-9---implement-authorisation-on-the-provider): Update API to handle `401` case
+  - [Step 10: **request filters**](#step-10---request-filters-on-the-provider): Fix the provider to support the `401` case
 ## Learning objectives
 
 If running this as a team workshop format, you may want to take a look through the [learning objectives](./LEARNING.md).
