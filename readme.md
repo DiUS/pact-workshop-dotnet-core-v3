@@ -24,7 +24,7 @@ This workshop is aimed at demonstrating core features and benefits of contract t
 
 Whilst contract testing can be applied retrospectively to systems, we will follow the [consumer driven contracts](https://martinfowler.com/articles/consumerDrivenContracts.html) approach in this workshop - where a new consumer and provider are created in parallel to evolve a service over time, especially where there is some uncertainty with what is to be built.
 
-This workshop should take from 1 to 2 hours, depending on how deep you want to go into each topic.
+This workshop should take from 1 to 2 hours, depending on how deep you want to go into each topic. It's based on the [Javascript version of the same workshop](https://github.com/pact-foundation/pact-workshop-js)
 
 **Workshop outline**:
 - [Prerequisites](#prerequisites)
@@ -39,6 +39,7 @@ This workshop should take from 1 to 2 hours, depending on how deep you want to g
   - [Step 7: **provider states**](#step-7---adding-the-missing-states): Update API to handle `404` case
   - [Step 9: **pact test**](#step-9---implement-authorisation-on-the-provider): Update API to handle `401` case
   - [Step 10: **request filters**](#step-10---request-filters-on-the-provider): Fix the provider to support the `401` case
+
 ## Learning objectives
 
 If running this as a team workshop format, you may want to take a look through the [learning objectives](./LEARNING.md).
