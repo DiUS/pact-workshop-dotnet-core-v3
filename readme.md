@@ -1,3 +1,6 @@
+| :exclamation: WARNING: This workshop is out of date and uses an earlier beta version of the Pact .NET project. It is not currently recommended for use |
+|-----------------------------------------|
+
 # Pact .NET Core Workshop
 
 When writing a lot of small services, testing the interactions between these becomes a major headache.
