@@ -1,6 +1,3 @@
-| :exclamation: WARNING: This workshop is out of date and uses an earlier beta version of the Pact .NET project. It is not currently recommended for use |
-|-----------------------------------------|
-
 # Pact .NET Core Workshop
 
 When writing a lot of small services, testing the interactions between these becomes a major headache.
@@ -54,19 +51,9 @@ write code in any other language you should be fine.
 
 However before taking part in this workshop please make sure you have:
 
-* [.NET Core SDK](https://www.microsoft.com/net/download/). Make sure you pick version 3.1 for this.
+* [.NET Core SDK](https://www.microsoft.com/net/download/). Make sure you pick version 6.0 for this.
 * An account at [Github.com](www.github.com)!
 * A text editor/IDE that supports .NET Core. Check out [VSCode](https://code.visualstudio.com/)
-
-## Add the Pacflow Nuget repository to Visual Studio/NuGet.Config
-
-In order to use the 4.0.0-beta version of Pact.Net you need to add the Pacflow Nuget repository to Visual Studio and/or your Nuget.Config
-file so that the libraries can be downloaded.
-
-* For Visual Studio add `https://pactfoundation.jfrog.io/artifactory/api/nuget/default-nuget-local` as a Package Source. In order to see the
-package you'll need to tick the `Include prereleases` checkbox since the libraries we'll use are beta versions
-* For NuGet.Config (found at %appdata%\NuGet\NuGet.Config (Windows) or ~/.config/NuGet/NuGet.Config (Mac/Linux)) add
-`<add key="ArtifactoryNuGetV3" value="https://pactfoundation.jfrog.io/artifactory/api/nuget/v3/default-nuget-local" protocolVersion="3" />`
 
 # Workshop Steps
 
@@ -105,54 +92,49 @@ The diagram below highlights the interaction for retrieving a product with ID 10
 
 ![Sequence Diagram](diagrams/workshop_step1_class-sequence-diagram.svg)
 
-You can see the client interface we created in `Consumer/src/ApiClient.cs`:
+You can see the client interface we created in [Consumer/src/ApiClient.cs](Consumer/src/ApiClient.cs):
 
 ```csharp
 using System;
 using System.Net.Http;
 using System.Threading.Tasks;
 
-namespace Consumer
+namespace Consumer;
+
+public class ApiClient
 {
-    public class ApiClient
+    private readonly Uri BaseUri;
+
+    public ApiClient(Uri baseUri)
     {
-        private readonly Uri BaseUri;
+        BaseUri = baseUri;
+    }
 
-        public ApiClient(Uri baseUri)
+    public async Task<HttpResponseMessage> GetAllProducts()
+    {
+        using var client = new HttpClient { BaseAddress = BaseUri };
+        try
         {
-            this.BaseUri = baseUri;
+            var response = await client.GetAsync($"/api/products");
+            return response;
         }
-
-        public async Task<HttpResponseMessage> GetAllProducts()
+        catch (Exception ex)
         {
-            using (var client = new HttpClient { BaseAddress = BaseUri })
-            {
-                try
-                {
-                    var response = await client.GetAsync($"/api/products");
-                    return response;
-                }
-                catch (Exception ex)
-                {
-                    throw new Exception("There was a problem connecting to Products API.", ex);
-                }
-            }
+            throw new Exception("There was a problem connecting to Provider API.", ex);
         }
+    }
 
-        public async Task<HttpResponseMessage> GetProduct(int id)
+    public async Task<HttpResponseMessage> GetProduct(int id)
+    {
+        using var client = new HttpClient { BaseAddress = BaseUri };
+        try
         {
-            using (var client = new HttpClient { BaseAddress = BaseUri })
-            {
-                try
-                {
-                    var response = await client.GetAsync($"/api/product/{id}");
-                    return response;
-                }
-                catch (Exception ex)
-                {
-                    throw new Exception("There was a problem connecting to Products API.", ex);
-                }
-            }
+            var response = await client.GetAsync($"/api/product/{id}");
+            return response;
+        }
+        catch (Exception ex)
+        {
+            throw new Exception("There was a problem connecting to Provider API.", ex);
         }
     }
 }
@@ -185,7 +167,7 @@ Application started. Press Ctrl+C to shut down.
 ```console
 # Terminal 2
 [130] $ dotnet run                                                                                                                                                                  ✘
-**Retrieving product list**
+** Retrieving product list **
 Response.Code=OK, Response.Body=[
   {
     "id": 9,
@@ -202,7 +184,7 @@ Response.Code=OK, Response.Body=[
 ]
 
 
-**Retrieving product with id=10**
+** Retrieving product with id=10 **
 Response.Code=NotFound, Response.Body=
 ```
 
@@ -232,7 +214,6 @@ Note how similar it looks to a unit test:
 ```csharp
 using System.IO;
 using PactNet;
-using PactNet.Native;
 using Xunit.Abstractions;
 using Xunit;
 using System.Net.Http;
@@ -243,82 +224,76 @@ using Newtonsoft.Json.Serialization;
 using Consumer;
 using PactNet.Matchers;
 
-namespace tests
+namespace tests;
+
+public class ApiTest
 {
-    public class ApiTest
+    private readonly IPactBuilderV3 _pact;
+    private readonly List<object> _products = new()
     {
-        private IPactBuilderV3 pact;
-        private readonly ApiClient ApiClient;
-        private readonly int port = 9000;
-        private readonly List<object> products;
+        new { id = 9, type = "CREDIT_CARD", name = "GEM Visa", version = "v2" },
+        new { id = 10, type = "CREDIT_CARD", name = "28 Degrees", version = "v1" }
+    };
 
-        public ApiTest(ITestOutputHelper output)
+    public ApiTest(ITestOutputHelper output)
+    {
+        var config = new PactConfig
         {
-            products = new List<object>()
+            PactDir = Path.Join("..", "..", "..", "..", "..", "pacts"),
+            Outputters = new[] { new XUnitOutput(output) },
+            DefaultJsonSettings = new JsonSerializerSettings
             {
-                new { id = 9, type = "CREDIT_CARD", name = "GEM Visa", version = "v2" },
-                new { id = 10, type = "CREDIT_CARD", name = "28 Degrees", version = "v1" }
-            };
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            }
+        };
 
-            var Config = new PactConfig
-            {
-                PactDir = Path.Join("..", "..", "..", "..", "..", "pacts"),
-                LogDir = "pact_logs",
-                Outputters = new[] { new XUnitOutput(output) },
-                DefaultJsonSettings = new JsonSerializerSettings
-                {
-                    ContractResolver = new CamelCasePropertyNamesContractResolver()
-                }
-            };
-
-            pact = Pact.V3("ApiClient", "ProductService", Config).UsingNativeBackend(port);
-            ApiClient = new ApiClient(new System.Uri($"http://localhost:{port}"));
-        }
-
-        [Fact]
-        public async void GetAllProducts()
-        {
-            // Arange
-            pact.UponReceiving("A valid request for all products")
-                    .Given("There is data")
-                    .WithRequest(HttpMethod.Get, "/api/products")
-                .WillRespond()
-                    .WithStatus(HttpStatusCode.OK)
-                    .WithHeader("Content-Type", "application/json; charset=utf-8")
-                    .WithJsonBody(new TypeMatcher(products));
-
-            await pact.VerifyAsync(async ctx => {
-                var response = await ApiClient.GetAllProducts();
-                Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-            });
-        }
-
-        [Fact]
-        public async void GetProduct()
-        {
-            // Arange
-            pact.UponReceiving("A valid request for a product")
-                    .Given("There is data")
-                    .WithRequest(HttpMethod.Get, "/api/product/10")
-                .WillRespond()
-                    .WithStatus(HttpStatusCode.OK)
-                    .WithHeader("Content-Type", "application/json; charset=utf-8")
-                    .WithJsonBody(new TypeMatcher(products[1]));
-
-            await pact.VerifyAsync(async ctx => {
-                var response = await ApiClient.GetProduct(10);
-                Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-            });
-        }
+        _pact = Pact.V3("ApiClient", "ProductService", config)
+            .WithHttpInteractions(8513);
     }
 
+    [Fact]
+    public async void GetAllProducts()
+    {
+        // Arrange
+        _pact.UponReceiving("A valid request for all products")
+            .Given("products exist")
+            .WithRequest(HttpMethod.Get, "/api/products")
+            .WillRespond()
+            .WithStatus(HttpStatusCode.OK)
+            .WithHeader("Content-Type", "application/json; charset=utf-8")
+            .WithJsonBody(new TypeMatcher(_products));
+
+        await _pact.VerifyAsync(async ctx => {
+            var response = await new ApiClient(ctx.MockServerUri).GetAllProducts();
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        });
+    }
+
+    [Fact]
+    public async void GetProduct()
+    {
+        // Arrange
+        _pact.UponReceiving("A valid request for a product")
+            .Given("product with ID 10 exists")
+            .WithRequest(HttpMethod.Get, "/api/product/10")
+            .WillRespond()
+            .WithStatus(HttpStatusCode.OK)
+            .WithHeader("Content-Type", "application/json; charset=utf-8")
+            .WithJsonBody(new TypeMatcher(_products[1]));
+
+        await _pact.VerifyAsync(async ctx => {
+            var response = await new ApiClient(ctx.MockServerUri).GetProduct(10);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        });
+    }
+}
 ```
 
 ![Test using Pact](diagrams/workshop_step3_pact.svg)
 
-This test starts a mock server on a specificed port (9000 here) that acts as our provider service.
+This test starts a mock server on a specified port (8513 here) that acts as our provider service.
 
-Running this test still passes, but it creates a pact file which we can use to validate our assumptions on the provider side, and have conversation around.
+Running this test still passes, but it creates a pact file that we can use to validate our assumptions on the provider side, and have conversations around.
 
 ```console
 $ dotnet test
@@ -344,61 +319,55 @@ A pact file should have been generated in *pacts/ApiClient-ProductService.json*
 
 Now let's make a start on writing Pact tests to validate the consumer contract:
 
-In `provider/test/`:
+In [`Provider/tests/ProductTest.cs`](Provider/tests/ProductTest.cs):
 
 ```csharp
 using System;
 using System.Collections.Generic;
 using System.IO;
-using Microsoft.AspNetCore;
-using Microsoft.AspNetCore.Hosting;
-using PactNet;
+using System.Threading.Tasks;
 using PactNet.Infrastructure.Outputters;
-using PactNet.Native;
+using PactNet.Verifier;
+using provider;
 using tests.XUnitHelpers;
 using Xunit;
 using Xunit.Abstractions;
 
-namespace tests
+namespace tests;
+
+public class ProductTest
 {
-    public class ProductTest
+    private const string PactServiceUri = "http://127.0.0.1:5234";
+    private readonly ITestOutputHelper _output;
+
+    public ProductTest(ITestOutputHelper output)
     {
-        private string _pactServiceUri = "http://127.0.0.1:9001";
-        private ITestOutputHelper _outputHelper { get; }
+        _output = output;
+    }
 
-        public ProductTest(ITestOutputHelper output)
+    [Fact]
+    public async Task EnsureProviderApiHonoursPactWithConsumer()
+    {
+        // Arrange
+        var config = new PactVerifierConfig
         {
-            _outputHelper = output;
-        }
-
-        [Fact]
-        public void EnsureProviderApiHonoursPactWithConsumer()
-        {
-            // Arrange
-            var config = new PactVerifierConfig
+            Outputters = new List<IOutput>
             {
-                // NOTE: We default to using a ConsoleOutput, however xUnit 2 does not capture the console output,
-                // so a custom outputter is required.
-                Outputters = new List<IOutput>
-                {
-                    new XUnitOutput(_outputHelper)
-                }
-            };
-
-            using (var _webHost = WebHost.CreateDefaultBuilder().UseStartup<TestStartup>().UseUrls(_pactServiceUri).Build())
-            {
-                _webHost.Start();
-
-                //Act / Assert
-                IPactVerifier pactVerifier = new PactVerifier(config);
-                var pactFile = new FileInfo(Path.Join("..", "..", "..", "..", "..", "pacts", "ApiClient-ProductService.json"));
-                pactVerifier.FromPactFile(pactFile)
-                    .WithProviderStateUrl(new Uri($"{_pactServiceUri}/provider-states"))
-                    .ServiceProvider("ProductService", new Uri(_pactServiceUri))
-                    .HonoursPactWith("ApiClient")
-                    .Verify();
+                new XUnitOutput(_output)
             }
-        }
+        };
+
+        await using var app = Startup.WebApp();
+        app.Urls.Add(PactServiceUri);
+        
+        await app.StartAsync();
+
+        //Act / Assert
+        IPactVerifier pactVerifier = new PactVerifier(config);
+        var pactFile = new FileInfo(Path.Join("..", "..", "..", "..", "..", "pacts", "ApiClient-ProductService.json"));
+        pactVerifier.ServiceProvider("ProductService", new Uri(PactServiceUri))
+            .WithFileSource(pactFile)
+            .Verify();
     }
 }
 ```
@@ -406,30 +375,50 @@ namespace tests
 We now need to validate the pact generated by the consumer is valid, by executing it against the running service provider, which should fail:
 
 ```console
-[1] $ dotnet test                                                                                                                                                                                                  ✘
+dotnet test
   Determining projects to restore...
-  Restored /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/src/provider.csproj (in 58 ms).
-  Restored /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/tests.csproj (in 240 ms).
-  Restored /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/src/provider.csproj (in 530 ms).
-  provider -> /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/src/bin/Debug/netcoreapp3.1/provider.dll
-  tests -> /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/bin/Debug/net5.0/tests.dll
-Test run for /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/bin/Debug/net5.0/tests.dll (.NETCoreApp,Version=v5.0)
-Microsoft (R) Test Execution Command Line Tool Version 16.11.0
+  All projects are up-to-date for restore.
+  provider -> /Users/mriezebosch/git/pact-workshop-dotnet-core-v3/Provider/src/bin/Debug/net6.0/provider.dll
+  tests -> /Users/mriezebosch/git/pact-workshop-dotnet-core-v3/Provider/tests/bin/Debug/net6.0/tests.dll
+Test run for /Users/mriezebosch/git/pact-workshop-dotnet-core-v3/Provider/tests/bin/Debug/net6.0/tests.dll (.NETCoreApp,Version=v6.0)
+Microsoft (R) Test Execution Command Line Tool Version 17.5.0 (arm64)
 Copyright (c) Microsoft Corporation.  All rights reserved.
 
 Starting test execution, please wait...
 A total of 1 test files matched the specified pattern.
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://127.0.0.1:5234
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Production
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: /Users/mriezebosch/git/pact-workshop-dotnet-core-v3/Provider/tests/bin/Debug/net6.0/
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:5234/api/product/10 - -
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:5234/api/product/10 - - - 404 0 - 6.8344ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:5234/api/products - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/products'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/products'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:5234/api/products - - - 200 - application/json;+charset=utf-8 4.9450ms
 
 Verifying a pact between ApiClient and ProductService
-  Given product with ID 10 exists
-  Given products exist
+
   A valid request for a product
+     Given product with ID 10 exists
     returns a response which
       has status code 200 (FAILED)
       includes headers
         "Content-Type" with value "application/json; charset=utf-8" (FAILED)
       has a matching body (FAILED)
+
   A valid request for all products
+     Given products exist
     returns a response which
       has status code 200 (OK)
       includes headers
@@ -439,7 +428,7 @@ Verifying a pact between ApiClient and ProductService
 
 Failures:
 
-1) Verifying a pact between ApiClient and ProductService Given product with ID 10 exists - A valid request for a product returns a response which
+1) Verifying a pact between ApiClient and ProductService Given product with ID 10 exists - A valid request for a product
     1.1) has a matching body
            / -> Expected body Present(65 bytes) but was empty
     1.2) has status code 200
@@ -449,34 +438,54 @@ Failures:
 
 There were 1 pact failures
 
-[xUnit.net 00:00:00.93]     tests.ProductTest.EnsureProviderApiHonoursPactWithConsumer [FAIL]
-  Failed tests.ProductTest.EnsureProviderApiHonoursPactWithConsumer [358 ms]
+[xUnit.net 00:00:00.98]     tests.ProductTest.EnsureProviderApiHonoursPactWithConsumer [FAIL]
+  Failed tests.ProductTest.EnsureProviderApiHonoursPactWithConsumer [586 ms]
   Error Message:
-   PactNet.PactFailureException : The verification process failed, see output for errors
+   PactNet.Exceptions.PactFailureException : Pact verification failed
   Stack Trace:
-     at PactNet.Native.NativePactVerifier.Verify(String args) in /Users/erikdanielsen/work/dius/pact-net/src/PactNet.Native/NativePactVerifier.cs:line 34
-   at PactNet.Native.PactVerifier.Verify() in /Users/erikdanielsen/work/dius/pact-net/src/PactNet.Native/PactVerifier.cs:line 240
-   at tests.ProductTest.EnsureProviderApiHonoursPactWithConsumer() in /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/ProductTest.cs:line 46
+     at PactNet.Verifier.InteropVerifierProvider.Execute()
+   at PactNet.Verifier.PactVerifierSource.Verify()
+   at tests.ProductTest.EnsureProviderApiHonoursPactWithConsumer() in /Users/mriezebosch/git/pact-workshop-dotnet-core-v3/Provider/tests/ProductTest.cs:line 44
+   at tests.ProductTest.EnsureProviderApiHonoursPactWithConsumer() in /Users/mriezebosch/git/pact-workshop-dotnet-core-v3/Provider/tests/ProductTest.cs:line 44
+--- End of stack trace from previous location ---
   Standard Output Messages:
- Invoking the pact verifier with args:
- --file
- /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/pacts/ApiClient-ProductService.json
- --state-change-url
- http://127.0.0.1:9001/provider-states
- --provider-name
- ProductService
- --hostname
- 127.0.0.1
- --port
- 9001
- --filter-consumer
- ApiClient
- --loglevel
- trace
-
-
-
-Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: < 1 ms - /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/bin/Debug/net5.0/tests.dll (net5.0)
+ Starting verification...
+ Pact verification failed
+ 
+ Verifier Output
+ ---------------
+ 
+ Verifying a pact between ApiClient and ProductService
+ 
+   A valid request for a product
+      Given product with ID 10 exists
+     returns a response which
+       has status code 200 (FAILED)
+       includes headers
+         "Content-Type" with value "application/json; charset=utf-8" (FAILED)
+       has a matching body (FAILED)
+ 
+   A valid request for all products
+      Given products exist
+     returns a response which
+       has status code 200 (OK)
+       includes headers
+         "Content-Type" with value "application/json; charset=utf-8" (OK)
+       has a matching body (OK)
+ 
+ 
+ Failures:
+ 
+ 1) Verifying a pact between ApiClient and ProductService Given product with ID 10 exists - A valid request for a product
+     1.1) has a matching body
+            / -> Expected body Present(65 bytes) but was empty
+     1.2) has status code 200
+            expected 200 but was 404
+     1.3) includes header 'Content-Type' with value '"application/json; charset=utf-8"'
+            Expected header 'Content-Type' to have value '"application/json; charset=utf-8"' but was ''
+ 
+ There were 1 pact failures
+ 
 ```
 
 ![Pact Verification](diagrams/workshop_step4_pact.svg)
@@ -491,7 +500,7 @@ We now need to update the consumer client and tests to hit the correct product p
 
 First, we need to update the GET route for the client:
 
-In `Consumer/src/ApiClient.cs`:
+In [`Consumer/src/ApiClient.cs`](Consumer/src/ApiClient.cs):
 
 ```csharp
 public async Task<HttpResponseMessage> GetProduct(int id)
@@ -513,7 +522,7 @@ public async Task<HttpResponseMessage> GetProduct(int id)
 
 Then we need to update the Pact test `ID 10 exists` to use the correct endpoint in `path`.
 
-In `Consumer/tests/ApiTest.cs`:
+In [`Consumer/tests/ApiTest.cs`](Consumer/tests/ApiTest.cs):
 
 ```csharp
 [Fact]
@@ -557,42 +566,28 @@ Passed!  - Failed:     0, Passed:     2, Skipped:     0, Total:     2, Duration:
 
 Now we run the provider tests again with the updated contract
 
-Run thse command under `Consumer/tests`:
+Run this command under [`Provider/tests`](Provider/tests):
 
 ```console
-[1] $ dotnet test                                                                                                                                                                   ✘
-  Determining projects to restore...
-  Restored /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/src/provider.csproj (in 53 ms).
-  Restored /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/tests.csproj (in 225 ms).
-  Restored /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/src/provider.csproj (in 524 ms).
-  provider -> /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/src/bin/Debug/netcoreapp3.1/provider.dll
-  tests -> /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/bin/Debug/net5.0/tests.dll
-Test run for /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/bin/Debug/net5.0/tests.dll (.NETCoreApp,Version=v5.0)
-Microsoft (R) Test Execution Command Line Tool Version 16.11.0
-Copyright (c) Microsoft Corporation.  All rights reserved.
-
-Starting test execution, please wait...
-A total of 1 test files matched the specified pattern.
-
+[1] $ dotnet test
 Verifying a pact between ApiClient and ProductService
-  Given There is data
-  Given There is data
+
   A valid request for a product
+     Given product with ID 10 exists
     returns a response which
       has status code 200 (OK)
       includes headers
         "Content-Type" with value "application/json; charset=utf-8" (OK)
       has a matching body (OK)
+
   A valid request for all products
+     Given products exist
     returns a response which
       has status code 200 (OK)
       includes headers
         "Content-Type" with value "application/json; charset=utf-8" (OK)
       has a matching body (OK)
 
-
-
-Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: < 1 ms - /Users/erikdanielsen/work/dius/pact-workshop-dotnet-core-v3/Provider/tests/bin/Debug/net5.0/tests.dll (net5.0)
 ```
 
 Yay - green ✅!
@@ -622,7 +617,7 @@ public async void NoProductsExist()
             .WithJsonBody(new TypeMatcher(new List<object>()));
 
     await pact.VerifyAsync(async ctx => {
-        var response = await ApiClient.GetAllProducts();
+        var response = await new ApiClient(ctx.MockServerUri).GetAllProducts();
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     });
 }
@@ -638,7 +633,7 @@ public async void ProductDoesNotExist()
             .WithStatus(HttpStatusCode.NotFound);
 
     await pact.VerifyAsync(async ctx => {
-        var response = await ApiClient.GetProduct(11);
+        var response = await new ApiClient(ctx.MockServerUri).GetProduct(11);
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     });
 }
@@ -859,7 +854,7 @@ public async void GetAllProducts()
             .WithJsonBody(new TypeMatcher(products));
 
     await pact.VerifyAsync(async ctx => {
-        var response = await ApiClient.GetAllProducts();
+        var response = await new ApiClient(ctx.MockServerUri).GetAllProducts();
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     });
 }
@@ -878,7 +873,7 @@ public async void GetProduct()
             .WithJsonBody(new TypeMatcher(products[1]));
 
     await pact.VerifyAsync(async ctx => {
-        var response = await ApiClient.GetProduct(10);
+        var response = await new ApiClient(ctx.MockServerUri).GetProduct(10);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     });
 }
@@ -897,7 +892,7 @@ public async void NoProductsExist()
             .WithJsonBody(new TypeMatcher(new List<object>()));
 
     await pact.VerifyAsync(async ctx => {
-        var response = await ApiClient.GetAllProducts();
+        var response = await new ApiClient(ctx.MockServerUri).GetAllProducts();
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     });
 }
@@ -914,7 +909,7 @@ public async void ProductDoesNotExist()
             .WithStatus(HttpStatusCode.Unauthorized);
 
     await pact.VerifyAsync(async ctx => {
-        var response = await ApiClient.GetProduct(11);
+        var response = await new ApiClient(ctx.MockServerUri).GetProduct(11);
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     });
 
@@ -929,7 +924,7 @@ public async void ProductDoesNotExist()
                 .WithStatus(HttpStatusCode.Unauthorized);
 
         await pact.VerifyAsync(async ctx => {
-            var response = await ApiClient.GetProduct(10);
+            var response = await new ApiClient(ctx.MockServerUri).GetProduct(10);
             Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         });
     }
@@ -1173,7 +1168,7 @@ Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration:
 
 Now with the most recently added interactions where we are expecting a response of 401 when no authorization header is sent, we are getting 200...
 
-## Step 9 - Implement authorisation on the provider
+## Step 9 - Implement authorization on the provider
 
 We will add a middleware to check the Authorization header and deny the request with `401` if the token is older than 1 hour.
 
@@ -1239,24 +1234,10 @@ namespace provider.Middleware
 }
 ```
 
-Add the middleware in `Startup.cs`, includeing the `using` statement:
+Add the middleware in [`Startup.cs`](Provider/src/Startup.cs):
 
 ```csharp
-using provider.Middleware;
-
-...
-
-// This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
-public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
-{
-    if (env.IsDevelopment())
-    {
-        app.UseDeveloperExceptionPage();
-    }
     app.UseMiddleware<AuthorizationMiddleware>();
-    app.UseRouting();
-    app.UseEndpoints(e => e.MapControllers());
-}
 ```
 
 This means that a client must present an HTTP `Authorization` header that looks as follows:

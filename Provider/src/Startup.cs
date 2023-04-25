@@ -1,39 +1,24 @@
-﻿using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.Extensions.Configuration;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using provider.Repositories;
+using Provider.Repositories;
 
-namespace Provider
+namespace Provider;
+
+public static class Startup
 {
-    public class Startup
+    public static WebApplication WebApp(params string[] strings)
     {
-        public Startup(IConfiguration configuration)
-        {
-            Configuration = configuration;
-        }
-
-        public IConfiguration Configuration { get; }
-
-        // This method gets called by the runtime. Use this method to add services to the container.
-        public void ConfigureServices(IServiceCollection services)
-        {
-            services.AddSingleton<IProductRepository, ProductRepository>();
-            services.AddControllers()
-                        .AddJsonOptions(options => options.JsonSerializerOptions.WriteIndented = true);
-            services.AddMvc();
-        }
-
-        // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
-        public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
-        {
-            if (env.IsDevelopment())
-            {
-                app.UseDeveloperExceptionPage();
-            }
-            app.UseRouting();
-            app.UseEndpoints(e => e.MapControllers());
-        }
+        var builder = WebApplication.CreateBuilder(strings);
+        builder
+            .Services
+            .AddSingleton<IProductRepository, ProductRepository>();
+        
+        var app = builder.Build();
+        app.MapGet("/api/products", ([FromServices] IProductRepository repository) => repository.List());
+        app.MapGet("/api/products/{id:int}",
+            ([FromServices] IProductRepository repository, int id) => repository.Get(id));
+        
+        return app;
     }
 }

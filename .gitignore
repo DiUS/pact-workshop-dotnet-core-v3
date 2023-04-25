@@ -10,3 +10,8 @@
 # build output
 **/bin
 **/obj
+
+.idea/
+*.sln.DotSettings.user
+
+pacts/
