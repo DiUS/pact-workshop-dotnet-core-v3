@@ -1,0 +1,154 @@
+name: test
+
+on: [push, pull_request]
+
+env:
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  build-dotnet:
+    name: "Build and Test (dotnet)"
+    env:
+      PACT_DO_NOT_TRACK: true
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - windows-latest
+          - ubuntu-latest
+          - macos-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup .NET Core SDK
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: "6.0.x" # runners already have .Net Framework installed as well
+
+      # - name: Step 1 - Restore Consumer
+      #   run: dotnet restore
+      #   working-directory: Consumer
+
+      # - name: Step 1 - Run Consumer
+      #   run: dotnet run
+      #   continue-on-error: true
+      #   working-directory: Consumer/src
+
+      # - name: Step 2 - Run Consumer & Provider
+      #   run: |
+      #     cd Provider/src && dotnet run & pid=$! && sleep 10
+      #     cd Consumer/src && dotnet run
+      #     kill -9 $pid
+      #   continue-on-error: true
+
+      - name: Step 3 - Run Pact Consumer Tests
+        run: dotnet test
+        working-directory: Consumer
+
+      - name: Step 3 - Show Pact File
+        run: cat pacts/ApiClient-ProductService.json
+
+      - name: Step 4 - Run Pact Provider Verifier Tests
+        run: dotnet test
+        working-directory: Provider
+        continue-on-error: true
+
+      - name: Step 5 - Update Consumer Client and Tests
+        run: |
+          diff Consumer/src/ApiClient.cs step5/Consumer/src/ApiClient.cs || true
+          cp -f step5/Consumer/src/ApiClient.cs Consumer/src/
+          diff Consumer/tests/ApiTest.cs step5/Consumer/tests/ApiTest.cs || true
+          cp -f step5/Consumer/tests/ApiTest.cs Consumer/tests/
+
+      - name: Step 5 - Run Pact Consumer Tests
+        run: dotnet test
+        working-directory: Consumer
+
+      - name: Step 5 - Show Pact File
+        run: cat pacts/ApiClient-ProductService.json
+
+      - name: Step 5 - Run Pact Provider Tests
+        run: dotnet test
+        working-directory: Provider
+  
+      - name: Step 6 - Consumer updates contract for missing products
+        run: |
+          diff Consumer/src/ApiClient.cs step6/Consumer/src/ApiClient.cs || true
+          cp -f step6/Consumer/src/ApiClient.cs Consumer/src/
+          diff Consumer/tests/ApiTest.cs step6/Consumer/tests/ApiTest.cs || true
+          cp -f step6/Consumer/tests/ApiTest.cs Consumer/tests/
+
+      - name: Step 6 - Run Pact Consumer Tests
+        run: dotnet test
+        working-directory: Consumer
+
+      - name: Step 6 - Run Pact Provider Tests
+        run: dotnet test
+        working-directory: Provider
+        continue-on-error: true
+
+      - name: Step 7 - Adding the missing states
+        run: |
+          diff Provider/tests/Middleware/ProviderStateMiddleware.cs step7/Provider/tests/Middleware/ProviderStateMiddleware.cs || true
+          cp -f step7/Provider/tests/Middleware/ProviderStateMiddleware.cs Provider/tests/Middleware/
+
+      - name: Step 7 - Run Pact Provider Tests
+        run: dotnet test
+        working-directory: Provider
+
+      - name: Step 8 - Consumer adds authorization tests
+        run: |
+          diff Consumer/tests/ApiTest.cs step8/Consumer/tests/ApiTest.cs || true
+          cp -f step8/Consumer/tests/ApiTest.cs Consumer/tests/
+
+      - name: Step 8 - Run Pact Consumer Tests
+        run: dotnet test
+        working-directory: Consumer
+        continue-on-error: true
+
+      - name: Step 8 - Consumer adds authorization headers to client code
+        run: |
+          diff Consumer/src/ApiClient.cs step8/Consumer/src/ApiClient.cs || true
+          cp -f step8/Consumer/src/ApiClient.cs Consumer/src/
+
+      - name: Step 8 - Re-Run Pact Consumer Tests
+        run: dotnet test
+        working-directory: Consumer
+
+      - name: Step 8 - Show Pact File
+        run: cat pacts/ApiClient-ProductService.json
+
+      - name: Step 8 - Run Pact Provider Tests
+        run: dotnet test
+        working-directory: Provider
+        continue-on-error: true
+
+      - name: Step 9 - Implement Auth on the provider
+        run: |
+          diff Provider/src/Middleware/AuthorizationMiddleware.cs step9/Provider/src/Middleware/AuthorizationMiddleware.cs || true
+          cp -f step9/Provider/src/Middleware/AuthorizationMiddleware.cs Provider/src/Middleware/
+          diff Provider/src/Startup.cs step9/Provider/src/Startup.cs || true
+          cp -f step9/Provider/src/Startup.cs Provider/src/
+
+      - name: Step 9 - Run Pact Provider Tests
+        run: dotnet test
+        working-directory: Provider
+        continue-on-error: true
+
+      - name: Step 10 - Implement Request Filters on the provider
+        run: |
+          diff Provider/tests/Middleware/AuthTokenRequestFilter.cs step10/Provider/tests/Middleware/AuthTokenRequestFilter.cs || true
+          cp -f step10/Provider/tests/Middleware/AuthTokenRequestFilter.cs Provider/tests/Middleware/
+          diff Provider/tests/TestStartup.cs step10/Provider/tests/TestStartup.cs || true
+          cp -f step10/Provider/tests/TestStartup.cs Provider/tests/
+          diff Provider/tests/Middleware/ProviderStateMiddleware.cs step10/Provider/tests/Middleware/ProviderStateMiddleware.cs || true
+          cp -f step10/Provider/tests/Middleware/ProviderStateMiddleware.cs Provider/tests/Middleware/
+
+      - name: Step 10 - Run Pact Provider Tests
+        run: dotnet test
+        working-directory: Provider
