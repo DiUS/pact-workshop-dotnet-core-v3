@@ -24,8 +24,11 @@ namespace tests.Middleware
             _repository = repository;
             _providerStates = new Dictionary<string, Action>
             {
-                { "products exist", ProductsExist},
-                { "product with ID 10 exists", Product10Exists }
+                { "products exist", ProductsExist },
+                { "product with ID 10 exists", Product10Exists },
+                // { "product with ID 11 does not exist", Product11DoesNotExist }, // STEP_7
+                // { "no products exist", NoProductsExist }, // STEP_7
+                // { "No auth token is provided", Product10Exists } // STEP_10
             };
         }
 
@@ -49,6 +52,18 @@ namespace tests.Middleware
 
             _repository.SetState(products);
         }
+
+        // // STEP_7
+        // private void NoProductsExist()
+        // {
+        //     _repository.SetState(new List<Product>());
+        // }
+
+        // // STEP_7
+        // private void Product11DoesNotExist()
+        // {
+        //     ProductsExist();
+        // }
 
         public async Task Invoke(HttpContext context)
         {

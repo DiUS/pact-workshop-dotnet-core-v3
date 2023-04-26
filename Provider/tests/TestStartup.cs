@@ -26,6 +26,7 @@ namespace tests
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
             app.UseMiddleware<ProviderStateMiddleware>();
+            // app.UseMiddleware<AuthTokenRequestFilter>(); // STEP_10
             _proxy.Configure(app, env);
         }
     }

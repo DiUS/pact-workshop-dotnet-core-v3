@@ -6,7 +6,11 @@
 
 # VS code
 **/.vs/
+**/.vscode/
 
 # build output
 **/bin
 **/obj
+
+## pact files
+pacts

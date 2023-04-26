@@ -19,12 +19,13 @@ namespace Consumer
             {
                 try
                 {
+                    // client.DefaultRequestHeaders.Add("Authorization", AuthorizationHeaderValue()); // STEP_8
                     var response = await client.GetAsync($"/api/products");
                     return response;
                 }
                 catch (Exception ex)
                 {
-                    throw new Exception("There was a problem connecting to Provider API.", ex);
+                    throw new Exception("There was a problem connecting to Products API.", ex);
                 }
             }
         }
@@ -35,14 +36,22 @@ namespace Consumer
             {
                 try
                 {
-                    var response = await client.GetAsync($"/api/product/{id}");
+                    // client.DefaultRequestHeaders.Add("Authorization", AuthorizationHeaderValue()); // STEP_8
+                    var response = await client.GetAsync($"/api/product/{id}"); // STEP_1 - STEP_4
+                    // var response = await client.GetAsync($"/api/products/{id}"); // STEP_5
                     return response;
                 }
                 catch (Exception ex)
                 {
-                    throw new Exception("There was a problem connecting to Provider API.", ex);
+                    throw new Exception("There was a problem connecting to Products API.", ex);
                 }
             }
         }
+
+        // // STEP_8
+        // private string AuthorizationHeaderValue()
+        // {
+        //     return $"Bearer {DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")}";
+        // }
     }
 }
